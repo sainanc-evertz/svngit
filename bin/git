@@ -1,0 +1,72 @@
+#!/bin/sh
+# svngit's `git` shim.
+#
+# Put this directory early on PATH and `git` keeps behaving exactly as it
+# always has -- except inside a Subversion working copy, where the command is
+# translated and run against Subversion instead.
+#
+# Dispatch rules, in order:
+#   1. SVNGIT_DISABLE=1               -> always the real git
+#   2. a .git nearer than any .svn    -> the real git
+#   3. a .svn working copy            -> svngit
+#   4. `clone` of an svn:// URL       -> svngit
+#   5. anything else                  -> the real git
+
+set -eu
+
+self_dir=$(cd -- "$(dirname -- "$0")" && pwd -P)
+
+# Find the first `git` on PATH that is not this script.
+real_git=""
+saved_ifs=$IFS
+IFS=:
+for dir in $PATH; do
+    [ -n "$dir" ] || dir=.
+    candidate="$dir/git"
+    [ -x "$candidate" ] || continue
+    candidate_dir=$(cd -- "$dir" 2>/dev/null && pwd -P) || continue
+    [ "$candidate_dir" = "$self_dir" ] && continue
+    real_git="$candidate_dir/git"
+    break
+done
+IFS=$saved_ifs
+
+svngit_bin="${SVNGIT_BIN:-svngit}"
+
+run_real_git() {
+    if [ -z "$real_git" ]; then
+        echo "git: no real git found on PATH (svngit shim at $self_dir)" >&2
+        exit 127
+    fi
+    exec "$real_git" "$@"
+}
+
+[ "${SVNGIT_DISABLE:-0}" = "1" ] && run_real_git "$@"
+
+# Whichever marker is found first walking up wins, so a git repo checked out
+# inside an svn working copy (or the reverse) still routes correctly.
+dir=$PWD
+while :; do
+    if [ -e "$dir/.git" ]; then
+        run_real_git "$@"
+    fi
+    if [ -d "$dir/.svn" ]; then
+        exec "$svngit_bin" "$@"
+    fi
+    [ "$dir" = "/" ] && break
+    dir=$(dirname -- "$dir")
+done
+
+# Outside any working copy, only an unmistakably-Subversion clone URL is worth
+# claiming; an https:// URL could belong to either system.
+if [ "${1:-}" = "clone" ]; then
+    for arg in "$@"; do
+        case "$arg" in
+            svn://*|svn+ssh://*|file://*/trunk|file://*/svnrepo*)
+                exec "$svngit_bin" "$@"
+                ;;
+        esac
+    done
+fi
+
+run_real_git "$@"

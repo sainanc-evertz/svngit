@@ -1,0 +1,157 @@
+"""A small git-flavoured option parser.
+
+argparse is the wrong shape here: git allows bundled short flags with a
+trailing value (`-am "msg"`), attached values (`-n5`), and `--opt=value`, and
+it never reorders positionals. This parser handles exactly those rules and
+nothing more.
+"""
+
+from __future__ import annotations
+
+from typing import Dict, Iterable, List, Sequence, Tuple
+
+from .errors import UsageError
+
+
+class Options:
+    def __init__(self, values: Dict[str, object], positionals: List[str], after_dashdash: List[str]):
+        self._values = values
+        self.positionals = positionals
+        #: Paths given after `--`, which git treats as unambiguously pathnames.
+        self.after_dashdash = after_dashdash
+
+    def __contains__(self, name: str) -> bool:
+        return name in self._values
+
+    def has(self, *names: str) -> bool:
+        return any(not self.negated(name) for name in names if name in self._values)
+
+    def negated(self, name: str) -> bool:
+        """True when the option was switched off with `--no-<name>`.
+
+        Only an integer 0 counts, so an empty string value (`-m ""`) is still
+        a present option.
+        """
+        value = self._values.get(name)
+        return isinstance(value, int) and not isinstance(value, bool) and value == 0
+
+    def get(self, name: str, default=None):
+        value = self._values.get(name, default)
+        return value
+
+    def first(self, *names: str, default=None):
+        for name in names:
+            if name in self._values:
+                return self._values[name]
+        return default
+
+    def count(self, name: str) -> int:
+        value = self._values.get(name)
+        return int(value) if isinstance(value, int) else (1 if name in self._values else 0)
+
+    @property
+    def paths(self) -> List[str]:
+        return self.after_dashdash if self.after_dashdash else self.positionals
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+        return "Options(%r, %r)" % (self._values, self.positionals)
+
+
+def parse(
+    argv: Sequence[str],
+    flags: Iterable[str] = (),
+    values: Iterable[str] = (),
+    allow_numeric: bool = False,
+) -> Options:
+    """Split argv into options and positionals.
+
+    `flags` and `values` are option names without dashes; single characters
+    are short options, longer names are long options. `allow_numeric` accepts
+    git's bare `-5` shorthand for "limit to 5" and stores it under "n".
+    """
+    flag_set = set(flags)
+    value_set = set(values)
+    parsed: Dict[str, object] = {}
+    positionals: List[str] = []
+    after_dashdash: List[str] = []
+    args = list(argv)
+    index = 0
+    seen_dashdash = False
+
+    def store_flag(name: str) -> None:
+        current = parsed.get(name)
+        parsed[name] = (current + 1) if isinstance(current, int) else 1
+
+    while index < len(args):
+        arg = args[index]
+        index += 1
+
+        if seen_dashdash:
+            after_dashdash.append(arg)
+            continue
+        if arg == "--":
+            seen_dashdash = True
+            continue
+
+        if arg.startswith("--"):
+            name, sep, inline = arg[2:].partition("=")
+            if name in value_set:
+                if sep:
+                    parsed[name] = inline
+                else:
+                    if index >= len(args):
+                        raise UsageError("option --%s requires a value" % name)
+                    parsed[name] = args[index]
+                    index += 1
+            elif name in flag_set:
+                if sep:
+                    parsed[name] = inline
+                else:
+                    store_flag(name)
+            elif name.startswith("no-") and name[3:] in flag_set:
+                parsed[name[3:]] = 0
+            else:
+                raise UsageError("unknown option: %s" % arg)
+            continue
+
+        if arg.startswith("-") and arg != "-":
+            if allow_numeric and arg[1:].isdigit():
+                parsed["n"] = arg[1:]
+                continue
+            cursor = 1
+            while cursor < len(arg):
+                letter = arg[cursor]
+                cursor += 1
+                if letter in value_set:
+                    remainder = arg[cursor:]
+                    if remainder:
+                        parsed[letter] = remainder
+                    else:
+                        if index >= len(args):
+                            raise UsageError("option -%s requires a value" % letter)
+                        parsed[letter] = args[index]
+                        index += 1
+                    break
+                if letter in flag_set:
+                    store_flag(letter)
+                    continue
+                raise UsageError("unknown option: -%s" % letter)
+            continue
+
+        positionals.append(arg)
+
+    return Options(parsed, positionals, after_dashdash)
+
+
+def split_revisions_and_paths(ctx, items: Sequence[str]) -> Tuple[List[str], List[str]]:
+    """git lets revisions and paths share the positional slot. Anything that
+    exists on disk is a path; everything else is treated as a revision."""
+    revisions: List[str] = []
+    paths: List[str] = []
+    for item in items:
+        candidate = (ctx.cwd / item).expanduser()
+        if candidate.exists():
+            paths.append(item)
+        else:
+            revisions.append(item)
+    return revisions, paths

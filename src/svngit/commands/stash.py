@@ -1,0 +1,198 @@
+"""git stash, built on `svn diff` + `svn patch`.
+
+Subversion has no stash. A stash entry here is a unified diff of the working
+copy plus, optionally, the content of untracked files -- all kept in the local
+object store, so nothing touches the server.
+"""
+
+from __future__ import annotations
+
+import tempfile
+from pathlib import Path
+from typing import List
+
+from .. import formatting, status as status_mod
+from ..cliargs import parse
+from ..errors import SvnGitError, UsageError
+from ..state import ADD, StashEntry, make_commit_id, now
+
+
+def cmd_stash(ctx, argv: List[str]) -> int:
+    subcommand = "push"
+    rest = list(argv)
+    if rest and not rest[0].startswith("-"):
+        subcommand = rest.pop(0)
+
+    handlers = {
+        "push": _push,
+        "save": _push,
+        "list": _list,
+        "pop": lambda c, a: _apply(c, a, drop=True),
+        "apply": lambda c, a: _apply(c, a, drop=False),
+        "drop": _drop,
+        "clear": _clear,
+        "show": _show,
+    }
+    handler = handlers.get(subcommand)
+    if handler is None:
+        raise UsageError(
+            "unknown stash subcommand '%s' (push, list, pop, apply, drop, clear, show)"
+            % subcommand
+        )
+    return handler(ctx, rest)
+
+
+def _push(ctx, argv: List[str]) -> int:
+    opts = parse(
+        argv,
+        flags=["include-untracked", "u", "keep-index", "k", "all", "a", "quiet", "q"],
+        values=["message", "m"],
+    )
+    message = str(opts.first("message", "m", default="")) or " ".join(opts.positionals)
+
+    report = status_mod.compute(ctx)
+    tracked = [e for e in report.entries if not e.untracked and not e.ignored]
+    untracked = [e for e in report.entries if e.untracked]
+    include_untracked = opts.has("include-untracked", "u", "all", "a")
+
+    if not tracked and not (include_untracked and untracked):
+        ctx.echo("No local changes to save")
+        return 0
+
+    diff = ctx.svn.run("diff", str(ctx.wc_root), check=False).stdout
+    patch_blob = ctx.state.objects.write(diff.encode("utf-8")) if diff.strip() else None
+
+    saved_untracked = []
+    if include_untracked:
+        for entry in untracked:
+            absolute = ctx.abs_path(entry.path)
+            if absolute.is_file():
+                saved_untracked.append(
+                    {"path": entry.path, "blob": ctx.state.objects.write_file(absolute)}
+                )
+
+    index_snapshot = {path: vars(entry) for path, entry in ctx.state.index.items()}
+    timestamp = now()
+    entry = StashEntry(
+        id=make_commit_id(message or "stash", [], timestamp),
+        message=message or "WIP on %s: %s" % (ctx.branch, formatting.revision_id(ctx.info.revision)),
+        timestamp=timestamp,
+        base_revision=ctx.info.revision,
+        patch_blob=patch_blob,
+        untracked=saved_untracked,
+        index=index_snapshot,
+    )
+
+    # Files scheduled for addition survive `svn revert` as untracked leftovers,
+    # which would then collide when the patch re-adds them. Remove them the way
+    # git does.
+    added = [e.path for e in tracked if e.index == ADD]
+    ctx.svn.run("revert", "-R", str(ctx.wc_root), mutating=True)
+    for path in added:
+        absolute = ctx.abs_path(path)
+        if absolute.is_file():
+            absolute.unlink()
+    for saved in saved_untracked:
+        absolute = ctx.abs_path(saved["path"])
+        if absolute.is_file():
+            absolute.unlink()
+
+    ctx.state.push_stash(entry)
+    ctx.state.clear_index()
+    ctx.state.save()
+    if not opts.has("quiet", "q"):
+        ctx.echo("Saved working directory and index state %s" % entry.message)
+    return 0
+
+
+def _list(ctx, argv: List[str]) -> int:
+    for position, entry in enumerate(ctx.state.stash):
+        ctx.echo("stash@{%d}: %s" % (position, entry.message))
+    return 0
+
+
+def _resolve_index(ctx, argv: List[str]) -> int:
+    entries = ctx.state.stash
+    if not entries:
+        raise SvnGitError("No stash entries found.")
+    positionals = [a for a in argv if not a.startswith("-")]
+    if not positionals:
+        return 0
+    raw = positionals[0]
+    if raw.startswith("stash@{") and raw.endswith("}"):
+        raw = raw[len("stash@{") : -1]
+    try:
+        position = int(raw)
+    except ValueError:
+        raise UsageError("%s is not a valid stash reference" % positionals[0])
+    if position < 0 or position >= len(entries):
+        raise SvnGitError("stash@{%d} is not a valid reference" % position)
+    return position
+
+
+def _apply(ctx, argv: List[str], drop: bool) -> int:
+    position = _resolve_index(ctx, argv)
+    entries = ctx.state.stash
+    entry = entries[position]
+
+    if entry.patch_blob:
+        patch = ctx.state.objects.read(entry.patch_blob)
+        with tempfile.NamedTemporaryFile("wb", suffix=".patch", delete=False) as handle:
+            handle.write(patch)
+            patch_path = handle.name
+        try:
+            result = ctx.svn.run("patch", patch_path, str(ctx.wc_root), check=False, mutating=True)
+        finally:
+            Path(patch_path).unlink(missing_ok=True)
+        if result.stdout.strip():
+            ctx.echo(result.stdout.rstrip())
+        if not result.ok:
+            raise SvnGitError(
+                "could not apply stash@{%d}:\n%s" % (position, result.stderr.strip())
+            )
+
+    for saved in entry.untracked:
+        absolute = ctx.abs_path(saved["path"])
+        absolute.parent.mkdir(parents=True, exist_ok=True)
+        absolute.write_bytes(ctx.state.objects.read(saved["blob"]))
+
+    for path, values in entry.index.items():
+        ctx.state.stage(path, values.get("action", "M"), values.get("blob"), values.get("executable", False))
+
+    if drop:
+        entries.pop(position)
+        ctx.state.set_stash(entries)
+    ctx.state.save()
+
+    report = status_mod.compute(ctx)
+    for line in formatting.format_porcelain(report):
+        ctx.echo(line)
+    if drop:
+        ctx.echo("Dropped stash@{%d} (%s)" % (position, entry.id[:7]))
+    return 0
+
+
+def _drop(ctx, argv: List[str]) -> int:
+    position = _resolve_index(ctx, argv)
+    entries = ctx.state.stash
+    entry = entries.pop(position)
+    ctx.state.set_stash(entries)
+    ctx.state.save()
+    ctx.echo("Dropped stash@{%d} (%s)" % (position, entry.id[:7]))
+    return 0
+
+
+def _clear(ctx, argv: List[str]) -> int:
+    ctx.state.set_stash([])
+    ctx.state.save()
+    return 0
+
+
+def _show(ctx, argv: List[str]) -> int:
+    position = _resolve_index(ctx, argv)
+    entry = ctx.state.stash[position]
+    if entry.patch_blob:
+        ctx.echo(ctx.state.objects.read_text(entry.patch_blob).rstrip())
+    for saved in entry.untracked:
+        ctx.echo("untracked: %s" % saved["path"])
+    return 0
