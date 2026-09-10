@@ -301,3 +301,16 @@ def test_stash_pop_with_no_entries_errors(harness):
     code = harness.run("stash", "pop")
     assert code != 0
     assert "No stash entries" in harness.err
+
+
+def test_push_refreshes_the_base_revision(harness):
+    """svn commit bumps only the committed paths. Without an update the stale
+    BASE makes git log miss the new revision and the next push look rejected."""
+    harness.write("a.txt")
+    harness.set_status([("a.txt", "modified")])
+    harness.run("add", "a.txt")
+    commit(harness)
+
+    harness.svn.respond("commit", "Committed revision 43.\n", first=True)
+    harness.run("push")
+    assert harness.svn.argv_for("update") is not None

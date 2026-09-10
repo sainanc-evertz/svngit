@@ -217,7 +217,8 @@ subprocess call, so they assert the exact `svn` argv each git command produces
 — that is the contract of a translation layer, and it runs in well under a
 second. The tests in `test_integration.py` build a real repository over
 `file://` and check the resulting repository state; they skip automatically
-when `svn` and `svnadmin` are not installed.
+when `svn` and `svnadmin` are not installed, so install Subversion before
+trusting a green run.
 
 ```bash
 brew install subversion     # macOS, to enable the integration tests
@@ -226,10 +227,14 @@ apt install subversion      # Debian/Ubuntu
 
 ## Status
 
-Alpha. The command surface in `docs/COMMANDS.md` is implemented and tested, but
-this has not been run against a large real-world repository. Treat
-`--dry-run` and `--trace` as your friends, and expect rough edges around
-unusual repository layouts and merge-heavy workflows.
+Alpha. The command surface in `docs/COMMANDS.md` is implemented, and the whole
+clone → add → commit → push → branch → merge cycle is exercised end to end
+against a real Subversion repository in the test suite.
+
+What that does *not* cover: a large real-world repository, an actual network
+server (the tests use `file://`), authentication, externals, unusual layouts,
+and merge-heavy histories. Treat `--dry-run` and `--trace` as your friends on
+first contact with a repository that matters.
 
 ## License
 

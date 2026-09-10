@@ -281,9 +281,10 @@ def _commit_merge(ctx, message: str) -> int:
     and without it Subversion will happily re-merge the same revisions later.
     """
     result = ctx.svn.run("commit", "-m", message, str(ctx.wc_root), mutating=True)
-    from .sync import _parse_committed_revision
+    from .sync import _parse_committed_revision, _refresh_base_revision
 
     revision = _parse_committed_revision(result.stdout)
+    _refresh_base_revision(ctx)
     ctx.state.clear_index()
     ctx.state.save()
     if revision:

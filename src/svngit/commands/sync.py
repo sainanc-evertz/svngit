@@ -172,6 +172,7 @@ def _commit_immediate(ctx, message: str, paths: Sequence[str], opts) -> int:
     ctx.state.clear_index()
     ctx.state.save()
     revision = _parse_committed_revision(result.stdout)
+    _refresh_base_revision(ctx)
     if not opts.has("quiet", "q"):
         if revision:
             ctx.echo("[%s %s] %s" % (ctx.branch, formatting.revision_id(revision), message.splitlines()[0]))
@@ -391,6 +392,7 @@ def _replay(ctx, commits: List[LocalCommit], quiet: bool = False) -> int:
         _restore(ctx, snapshot)
         ctx.state.replace_commits(remaining)
         ctx.state.save()
+        _refresh_base_revision(ctx)
 
     if not quiet:
         ctx.echo("To %s" % ctx.info.url)
@@ -406,6 +408,21 @@ def _replay(ctx, commits: List[LocalCommit], quiet: bool = False) -> int:
             )
         ctx.echo("Pushed %d commit%s." % (pushed, "" if pushed == 1 else "s"))
     return 0
+
+
+def _refresh_base_revision(ctx) -> None:
+    """Bring the working copy's BASE up to the revision we just created.
+
+    `svn commit` bumps only the committed paths; the working copy root keeps
+    its old revision. Left alone, that stale BASE makes `git log` miss the
+    revision that was just pushed and makes the *next* push look like the
+    server has moved ahead. `svn update` is the standard remedy and is
+    content-neutral here, since a push only runs when we are already current.
+    """
+    result = ctx.svn.run("update", str(ctx.wc_root), "--accept", "postpone",
+                         check=False, mutating=True)
+    if result.ok:
+        ctx._info = None  # force the next read to see the new revision
 
 
 def _materialise(ctx, commit: LocalCommit) -> None:
