@@ -545,3 +545,33 @@ def test_add_edit_with_a_real_editor_process(cli, svn_repo, tmp_path):
     assert cli("push")[0] == 0
     on_server = svn("cat", svn_repo["url"] + "/trunk/a.txt")
     assert "TWO" in on_server and "TEN" not in on_server
+
+
+def test_add_patch_per_hunk_edit(cli, svn_repo):
+    """`e` inside `git add -p`: edit one hunk, take another as-is."""
+    import io
+
+    from svngit.cli import dispatch
+    from svngit.context import Context
+
+    wc = svn_repo["wc"]
+    _seed(cli, wc)
+    (wc / "a.txt").write_text(PATCH_BASE.replace("two", "TWO").replace("ten", "TEN"))
+
+    stdout, stderr = io.StringIO(), io.StringIO()
+    ctx = Context(
+        cwd=wc, stdout=stdout, stderr=stderr, stdin=io.StringIO("y\ne\n")
+    )
+    ctx.edit_hook = lambda text: text.replace("+TEN", "+EDITED")
+    code = dispatch(ctx, "add", ["-p"])
+    assert code == 0, stderr.getvalue()
+
+    cli("commit", "-m", "one taken, one edited")
+    assert cli("push")[0] == 0
+
+    on_server = svn("cat", svn_repo["url"] + "/trunk/a.txt")
+    assert "TWO" in on_server
+    assert "EDITED" in on_server
+    assert "TEN\n" not in on_server
+    # The working copy still holds what was actually typed there.
+    assert "TEN" in (wc / "a.txt").read_text()

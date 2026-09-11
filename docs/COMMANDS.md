@@ -20,7 +20,7 @@ always absolute, so behaviour does not depend on which subdirectory you are in.
 | `git add <deleted file>` | `svn delete --force <path>` | Stages the removal, as git does. |
 | `git add .` / `-A` | as above, for everything | |
 | `git add -u` | as above, tracked paths only | |
-| `git add -p` | *no svn call* | Stages hunk by hunk into the emulated index. Answers: `y n q a d s ?`. No `j`/`k` navigation. |
+| `git add -p` | *no svn call* | Stages hunk by hunk into the emulated index. Answers: `y n q a d s e ?`, where `e` opens that one hunk in `$EDITOR`. No `j`/`k` navigation. |
 | `git add -e` | *no svn call* | Opens the whole diff in `$EDITOR`; what survives the edit is staged. Hunk headers are recalculated, so stale `@@` counts are fine. A patch that fails to apply stages nothing. |
 | `git rm <path>` | `svn delete <path>` | |
 | `git rm --cached <path>` | `svn delete --keep-local <path>` | |

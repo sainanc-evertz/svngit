@@ -61,14 +61,14 @@ def render_file_patch(path: str, base: str, work: str, context: int = 3) -> List
     ]
     for hunk in diff.hunks:
         lines.append(hunk.header)
-        for prefix, text in _body(diff, hunk):
+        for prefix, text in hunk_body(diff, hunk):
             lines.append(prefix + text.rstrip("\n"))
             if not text.endswith("\n"):
                 lines.append(NO_NEWLINE)
     return lines
 
 
-def _body(diff, hunk) -> List[Tuple[str, str]]:
+def hunk_body(diff, hunk) -> List[Tuple[str, str]]:
     """The hunk's body as (prefix, raw line) pairs, newlines intact."""
     first = diff.ops[hunk.changed_ops[0]]
     last = diff.ops[hunk.changed_ops[-1]]
@@ -85,11 +85,54 @@ def _body(diff, hunk) -> List[Tuple[str, str]]:
     return out
 
 
+def from_diff_hunk(diff, hunk) -> PatchHunk:
+    """Express one of `hunks.diff_file`'s hunks as a patch hunk.
+
+    Lets the `git add -p` loop hold accepted hunks in a single representation
+    whether the user took them as-is or rewrote them in an editor.
+    """
+    old: List[str] = []
+    new: List[str] = []
+    for prefix, text in hunk_body(diff, hunk):
+        if prefix in (" ", "-"):
+            old.append(text)
+        if prefix in (" ", "+"):
+            new.append(text)
+    return PatchHunk(old_start=hunk.base_start + 1, old_lines=old, new_lines=new)
+
+
+def render_hunk(diff, hunk) -> List[str]:
+    """One hunk on its own, for editing in isolation."""
+    lines = [hunk.header]
+    for prefix, text in hunk_body(diff, hunk):
+        lines.append(prefix + text.rstrip("\n"))
+        if not text.endswith("\n"):
+            lines.append(NO_NEWLINE)
+    return lines
+
+
+def hunk_stats(hunk: PatchHunk) -> Tuple[int, int]:
+    """(insertions, deletions) for a patch hunk, ignoring its context lines."""
+    from difflib import SequenceMatcher
+
+    insertions = deletions = 0
+    matcher = SequenceMatcher(None, hunk.old_lines, hunk.new_lines, autojunk=False)
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag != "equal":
+            deletions += i2 - i1
+            insertions += j2 - j1
+    return insertions, deletions
+
+
 # ----------------------------------------------------------------------
 # parsing
 # ----------------------------------------------------------------------
-def parse_patch(text: str) -> List[FilePatch]:
-    """Parse a (possibly hand-edited) unified patch."""
+def parse_patch(text: str, default_path: Optional[str] = None) -> List[FilePatch]:
+    """Parse a (possibly hand-edited) unified patch.
+
+    `default_path` attributes a bare `@@` fragment to a file, which is what
+    `git add -p`'s per-hunk edit produces.
+    """
     files: List[FilePatch] = []
     current: Optional[FilePatch] = None
     hunk: Optional[PatchHunk] = None
@@ -116,7 +159,10 @@ def parse_patch(text: str) -> List[FilePatch]:
 
         if raw.startswith("@@"):
             if current is None:
-                raise PatchError("patch fragment has no file header")
+                if default_path is None:
+                    raise PatchError("patch fragment has no file header")
+                current = FilePatch(default_path)
+                files.append(current)
             hunk = PatchHunk(old_start=_old_start(raw))
             current.hunks.append(hunk)
             last_sides = ()

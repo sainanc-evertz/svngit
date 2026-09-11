@@ -10,9 +10,10 @@ needs no special handling anywhere else.
 
 from __future__ import annotations
 
-from typing import List, Optional, Set
+from typing import List, Optional
 
 from .. import hunks as hunks_mod
+from .. import patch as patch_mod
 from ..state import ADD, MODIFY
 from ..status import FileStatus
 
@@ -22,8 +23,21 @@ n - do not stage this hunk
 a - stage this hunk and all later hunks in the file
 d - do not stage this hunk or any later hunk in the file
 s - split the current hunk into smaller hunks
+e - manually edit the current hunk
 q - quit; do not stage this hunk or any remaining ones
 ? - print this help"""
+
+HUNK_EDIT_NOTES = """\
+#
+# ---
+# To remove '-' lines, make them ' ' lines (context).
+# To remove '+' lines, delete them.
+# Lines starting with '#' will be removed.
+#
+# If the patch applies cleanly, the edited hunk is staged immediately.
+# If it does not apply cleanly, you get to edit it again.
+# Removing every line aborts the edit and leaves the hunk unstaged.
+"""
 
 #: Answers that end the whole session rather than just this hunk.
 QUIT = "q"
@@ -101,8 +115,8 @@ def _stage_one_file(ctx, entry: FileStatus) -> Optional[bool]:
 
     ctx.echo("diff --git a/%s b/%s" % (entry.path, entry.path))
 
-    selected: Set[int] = set()
-    accepted = 0  # hunks the user said yes to, which is not the opcode count
+    base_text = base_bytes.decode("utf-8", errors="replace")
+    accepted: List[patch_mod.PatchHunk] = []
     queue = list(diff.hunks)
     position = 0
     quit_all = False
@@ -117,12 +131,9 @@ def _stage_one_file(ctx, entry: FileStatus) -> Optional[bool]:
             quit_all = answer == QUIT or answer is None
             break
         if answer == "y":
-            selected.update(hunk.changed_ops)
-            accepted += 1
+            accepted.append(patch_mod.from_diff_hunk(diff, hunk))
         elif answer == "a":
-            for remaining in queue[position:]:
-                selected.update(remaining.changed_ops)
-            accepted += len(queue) - position
+            accepted.extend(patch_mod.from_diff_hunk(diff, h) for h in queue[position:])
             break
         elif answer == "d":
             break
@@ -134,28 +145,75 @@ def _stage_one_file(ctx, entry: FileStatus) -> Optional[bool]:
             queue[position : position + 1] = pieces
             ctx.echo("Split into %d hunks." % len(pieces))
             continue
+        elif answer == "e":
+            edited = _edit_hunk(ctx, diff, hunk, entry.path, base_text, accepted)
+            if edited is _EDIT_RETRY:
+                continue  # does not apply; stay on this hunk
+            if edited is not None:
+                accepted.append(edited)
         position += 1
 
-    if selected:
-        content = diff.apply(selected)
+    if accepted:
+        content = patch_mod.apply_file_patch(
+            base_text, patch_mod.FilePatch(entry.path, accepted)
+        )
         blob = ctx.state.objects.write(content.encode("utf-8"))
         action = entry.index if entry.index in (ADD, "R") else MODIFY
         ctx.state.stage(entry.path, action, blob, staged.executable if staged else False)
         ctx.state.save()
-        insertions, deletions = hunks_mod.summarise(diff, selected)
+        insertions = deletions = 0
+        for item in accepted:
+            added, removed = patch_mod.hunk_stats(item)
+            insertions += added
+            deletions += removed
         ctx.echo(
             "Staged %d hunk%s from %s (+%d/-%d)."
-            % (accepted, "" if accepted == 1 else "s", display, insertions, deletions)
+            % (len(accepted), "" if len(accepted) == 1 else "s", display, insertions, deletions)
         )
 
-    return None if quit_all else bool(selected)
+    return None if quit_all else bool(accepted)
+
+
+#: Returned by _edit_hunk when the edit did not apply and should be retried.
+_EDIT_RETRY = object()
+
+
+def _edit_hunk(ctx, diff, hunk, path, base_text, accepted):
+    """`e`: edit one hunk in the editor and validate it before accepting.
+
+    Validation is a trial application of everything accepted so far plus this
+    hunk, so a hunk that cannot land is caught while the user is still here to
+    fix it -- which is what git means by "you get to edit it again".
+    """
+    from .. import editor as editor_mod
+
+    original = "\n".join(patch_mod.render_hunk(diff, hunk)) + "\n"
+    edited = editor_mod.edit_text(ctx, original + HUNK_EDIT_NOTES, suffix=".diff", what="hunk")
+
+    try:
+        patches = patch_mod.parse_patch(edited, default_path=path)
+    except patch_mod.PatchError as exc:
+        ctx.warn("Your edited hunk could not be read: %s" % exc)
+        return _EDIT_RETRY
+
+    candidate = patches[0].hunks[0] if patches and patches[0].hunks else None
+    if candidate is None or not (candidate.old_lines or candidate.new_lines):
+        # git: removing every line aborts the edit and leaves the hunk alone.
+        ctx.echo("Edit aborted; the hunk was left unstaged.")
+        return None
+    try:
+        patch_mod.apply_file_patch(base_text, patch_mod.FilePatch(path, accepted + [candidate]))
+    except patch_mod.PatchError:
+        ctx.warn("Your edited hunk does not apply. Edit again.")
+        return _EDIT_RETRY
+    return candidate
 
 
 def _whole_file(ctx, entry: FileStatus, display: str, work_bytes: bytes) -> Optional[bool]:
     """Binary files have no hunks to choose between: all or nothing."""
     ctx.echo("diff --git a/%s b/%s" % (entry.path, entry.path))
     ctx.echo("Binary file %s cannot be split into hunks." % display)
-    answer = _ask(ctx, 1, 1, splittable=False, prompt="Stage this file")
+    answer = _ask(ctx, 1, 1, splittable=False, prompt="Stage this file", editable=False)
     if answer is None or answer == QUIT:
         return None
     if answer in ("y", "a"):
@@ -166,9 +224,16 @@ def _whole_file(ctx, entry: FileStatus, display: str, work_bytes: bytes) -> Opti
     return False
 
 
-def _ask(ctx, index: int, total: int, splittable: bool, prompt: str = "Stage this hunk") -> Optional[str]:
+def _ask(
+    ctx,
+    index: int,
+    total: int,
+    splittable: bool,
+    prompt: str = "Stage this hunk",
+    editable: bool = True,
+) -> Optional[str]:
     """Read one answer. None means end of input, which git treats as quit."""
-    choices = "y,n,q,a,d" + (",s" if splittable else "") + ",?"
+    choices = "y,n,q,a,d" + (",s" if splittable else "") + (",e" if editable else "") + ",?"
     while True:
         ctx.stdout.write("(%d/%d) %s [%s]? " % (index, total, prompt, choices))
         ctx.stdout.flush()
@@ -177,10 +242,13 @@ def _ask(ctx, index: int, total: int, splittable: bool, prompt: str = "Stage thi
             ctx.echo("")
             return None
         answer = line.strip().lower()
-        if answer in ("y", "n", "q", "a", "d") or (answer == "s" and splittable):
+        if answer in ("y", "n", "q", "a", "d") or (answer == "s" and splittable) or (answer == "e" and editable):
             return answer
         if answer == "s":
             ctx.echo("Sorry, cannot split this hunk")
+            continue
+        if answer == "e":
+            ctx.echo("Sorry, cannot edit this hunk")
             continue
         ctx.echo(HELP)
 
