@@ -173,8 +173,10 @@ applied. `git pull` applies them.
 `git add -p` and `git add -e` both work, because the emulated index stores
 content rather than a flag: staging part of a file writes a blob that is
 neither BASE nor the worktree, and everything downstream already reads that
-blob. `-p` supports `y n q a d s e ?` (no `j`/`k` navigation), where `e` opens the
-current hunk alone in `$EDITOR`. `-e` opens the whole diff instead. Both can
+blob. `-p` takes git's full answer set -- `y n q a d s e j J k K g / ?` -- so you
+can move between hunks, jump to one by number, or search for one by regex, and
+the prompt offers only the moves that exist from where you are. `e` opens the
+current hunk alone in `$EDITOR`; `-e` opens the whole diff instead. Both can
 stage text that was never on disk, which is what editing a patch is for. Hunk
 headers are recalculated on the way back in, so there is no need to fix the
 `@@` counts by hand. An edit that fails to apply is refused -- `-p` puts you

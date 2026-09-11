@@ -340,3 +340,145 @@ def test_help_mentions_e(harness):
     harness.answer("?", "n", "n")
     harness.run("add", "-p")
     assert "e - manually edit the current hunk" in harness.out
+
+
+# ----------------------------------------------------------------------
+# navigation: j J k K g /
+# ----------------------------------------------------------------------
+def setup_three_hunks(harness):
+    """Three changes, each far enough apart to be its own hunk."""
+    base = "".join("line%02d\n" % n for n in range(1, 31))
+    work = base.replace("line02", "TWO").replace("line15", "FIFTEEN").replace("line29", "TWENTYNINE")
+    harness.write("a.txt", work)
+    harness.set_status([("a.txt", "modified")])
+    harness.svn.respond("cat", base, first=True)
+    return base, work
+
+
+def test_J_moves_to_the_next_hunk_without_deciding(harness):
+    base, _ = setup_three_hunks(harness)
+    # Skip past hunk 1, stage hunk 2, skip hunk 3, then decline hunk 1.
+    harness.answer("J", "y", "n", "n")
+    harness.run("add", "-p")
+    assert staged_content(harness) == base.replace("line15", "FIFTEEN")
+
+
+def test_K_moves_back_to_a_previous_hunk(harness):
+    base, _ = setup_three_hunks(harness)
+    # Move forward twice without deciding, then back once and stage there.
+    harness.answer("J", "J", "K", "y", "n", "n")
+    harness.run("add", "-p")
+    assert staged_content(harness) == base.replace("line15", "FIFTEEN")
+
+
+def test_j_skips_hunks_that_are_already_decided(harness):
+    base, _ = setup_three_hunks(harness)
+    # Decide hunk 1, J back is unavailable; from hunk 2 `j` must land on 3.
+    harness.answer("n", "j", "y", "n")
+    harness.run("add", "-p")
+    assert staged_content(harness) == base.replace("line29", "TWENTYNINE")
+
+
+def test_undecided_hunks_are_revisited_rather_than_dropped(harness):
+    """`j` means 'come back to this later', so leaving a hunk undecided and
+    answering the last one must return to it, not silently skip it."""
+    base, _ = setup_three_hunks(harness)
+    harness.answer("J", "J", "n", "y", "n")
+    harness.run("add", "-p")
+    # After deciding hunk 3, the loop wraps to the still-undecided hunk 1.
+    assert staged_content(harness) == base.replace("line02", "TWO")
+
+
+def test_no_next_hunk_at_the_end(harness):
+    setup_two_hunks(harness)
+    harness.answer("n", "J", "n")
+    harness.run("add", "-p")
+    assert "No next hunk" in harness.out
+
+
+def test_no_previous_hunk_at_the_start(harness):
+    setup_two_hunks(harness)
+    harness.answer("K", "n", "n")
+    harness.run("add", "-p")
+    assert "No previous hunk" in harness.out
+
+
+def test_prompt_only_offers_moves_that_exist(harness):
+    setup_two_hunks(harness)
+    harness.answer("n", "n")
+    harness.run("add", "-p")
+    prompts = harness.out.split("Stage this hunk ")
+    # First hunk: no way back. Last hunk: no way forward.
+    assert "K" not in prompts[1].split("]")[0]
+    assert "J" not in prompts[2].split("]")[0]
+
+
+def test_g_jumps_to_a_chosen_hunk(harness):
+    base, _ = setup_three_hunks(harness)
+    harness.answer("g", "3", "y", "n", "n")
+    harness.run("add", "-p")
+    assert "go to which hunk?" in harness.out
+    assert staged_content(harness) == base.replace("line29", "TWENTYNINE")
+
+
+def test_g_lists_hunks_with_their_decisions(harness):
+    setup_three_hunks(harness)
+    harness.answer("y", "g", "", "n", "n")
+    harness.run("add", "-p")
+    listing = [l for l in harness.out.splitlines() if ": -1," in l]
+    assert listing and listing[0].startswith("+  1")  # hunk 1 marked staged
+
+
+def test_g_rejects_an_out_of_range_number(harness):
+    setup_two_hunks(harness)
+    harness.answer("g", "99", "n", "n")
+    harness.run("add", "-p")
+    assert "Invalid number: '99'" in harness.out
+
+
+def test_search_jumps_to_a_matching_hunk(harness):
+    base, _ = setup_three_hunks(harness)
+    harness.answer("/", "TWENTYNINE", "y", "n", "n")
+    harness.run("add", "-p")
+    assert "search for regex?" in harness.out
+    assert staged_content(harness) == base.replace("line29", "TWENTYNINE")
+
+
+def test_search_reports_when_nothing_matches(harness):
+    setup_two_hunks(harness)
+    harness.answer("/", "nothing-like-this", "n", "n")
+    harness.run("add", "-p")
+    assert "No hunk matches the given pattern" in harness.out
+
+
+def test_search_reports_a_malformed_regex(harness):
+    setup_two_hunks(harness)
+    harness.answer("/", "[unclosed", "n", "n")
+    harness.run("add", "-p")
+    assert "Malformed search regexp" in harness.out
+
+
+def test_search_accepts_a_real_regex(harness):
+    base, _ = setup_three_hunks(harness)
+    harness.answer("/", r"^\+F.*TEEN$", "y", "n", "n")
+    harness.run("add", "-p")
+    assert staged_content(harness) == base.replace("line15", "FIFTEEN")
+
+
+def test_navigation_does_not_disturb_file_order(harness):
+    """Hunks answered out of order must still be applied front to back."""
+    base, work = setup_three_hunks(harness)
+    harness.answer("g", "3", "y", "g", "1", "y", "n")
+    harness.run("add", "-p")
+    assert staged_content(harness) == base.replace("line02", "TWO").replace(
+        "line29", "TWENTYNINE"
+    )
+
+
+def test_help_lists_the_navigation_commands(harness):
+    setup_two_hunks(harness)
+    harness.answer("?", "n", "n")
+    harness.run("add", "-p")
+    for line in ("j - leave this hunk undecided", "J - leave this hunk undecided",
+                 "g - select a hunk to go to", "/ - search for a hunk"):
+        assert line in harness.out
