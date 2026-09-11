@@ -102,6 +102,7 @@ def compute(ctx, paths: Optional[List[str]] = None, include_ignored: bool = Fals
     targets = [ctx.svn_target(p) for p in paths] if paths else [str(ctx.wc_root)]
     svn_entries = ctx.svn.status(targets, no_ignore=include_ignored)
     index = ctx.state.index
+    queued = ctx.state.queued_blobs()
     root = ctx.wc_root.resolve()
 
     by_path: Dict[str, FileStatus] = {}
@@ -122,7 +123,7 @@ def compute(ctx, paths: Optional[List[str]] = None, include_ignored: bool = Fals
         wc_path = rel(entry.path)
         if wc_path is None or wc_path == ".":
             continue
-        status = _translate_entry(ctx, entry, index.get(wc_path), wc_path)
+        status = _translate_entry(ctx, entry, index.get(wc_path), wc_path, queued)
         if status is not None:
             by_path[wc_path] = status
 
@@ -144,10 +145,36 @@ def compute(ctx, paths: Optional[List[str]] = None, include_ignored: bool = Fals
     return report
 
 
-def _translate_entry(ctx, entry: StatusEntry, staged, wc_path: str) -> Optional[FileStatus]:
+#: Sentinel: this path is not explained by a queued local commit.
+_NOT_LOCAL = object()
+
+
+def _against_local_commit(wc_path, abs_path, committed, item):
+    """Compare a path against the local commit that last touched it.
+
+    Subversion still calls the path modified, because nothing has been pushed.
+    Git would call it committed. Anything *beyond* the local commit is a fresh
+    unstaged modification.
+    """
+    if committed is None:
+        # The local commit deleted it; gone from disk means nothing further.
+        return None if not abs_path.exists() else FileStatus(wc_path, CLEAN, "M")
+    if hash_file(abs_path) == committed:
+        return None
+    if item in ("added", "modified", "replaced", "normal", "incomplete"):
+        return FileStatus(wc_path, CLEAN, "M")
+    return _NOT_LOCAL
+
+
+def _translate_entry(ctx, entry: StatusEntry, staged, wc_path: str, queued=None) -> Optional[FileStatus]:
     item = entry.item
     props_modified = entry.props in ("modified", "conflicted")
     abs_path = ctx.abs_path(wc_path)
+
+    if staged is None and queued and wc_path in queued:
+        resolved = _against_local_commit(wc_path, abs_path, queued[wc_path], item)
+        if resolved is not _NOT_LOCAL:
+            return resolved
 
     if item == "unversioned":
         return FileStatus(wc_path, UNTRACKED, UNTRACKED)

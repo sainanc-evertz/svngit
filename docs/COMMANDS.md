@@ -20,7 +20,7 @@ always absolute, so behaviour does not depend on which subdirectory you are in.
 | `git add <deleted file>` | `svn delete --force <path>` | Stages the removal, as git does. |
 | `git add .` / `-A` | as above, for everything | |
 | `git add -u` | as above, tracked paths only | |
-| `git add -p` | — | Refused: needs an interactive index. |
+| `git add -p` | *no svn call* | Stages hunk by hunk into the emulated index. Answers: `y n q a d s ?`. No `e` (manual hunk editing) or `j`/`k` navigation. |
 | `git rm <path>` | `svn delete <path>` | |
 | `git rm --cached <path>` | `svn delete --keep-local <path>` | |
 | `git mv <a> <b>` | `svn move <a> <b>` | |
@@ -140,4 +140,4 @@ files, all kept in the local object store. The server is never involved.
 
 These report what is missing and what to reach for instead: `rebase`,
 `bisect`, `submodule`, `worktree`, `reflog`, `gc`, `am`, `notes`,
-`git add -p`, `git clean -i`.
+`git clean -i`.

@@ -165,6 +165,7 @@ def _worktree_diff(ctx, wc_paths: Optional[List[str]]) -> str:
     """worktree vs index: staged paths compare against their staged blob,
     everything else against BASE (which is what svn diff already gives)."""
     index = ctx.state.index
+    queued = ctx.state.queued_blobs()
     chunks: List[str] = []
 
     report = status_mod.compute(ctx, wc_paths)
@@ -182,7 +183,16 @@ def _worktree_diff(ctx, wc_paths: Optional[List[str]]) -> str:
                 formatting.unified_diff(ctx.state.objects.read(staged.blob), current, entry.path)
             )
         elif entry.unstaged:
-            unstaged_targets.append(ctx.svn_target(entry.path))
+            if entry.path in queued:
+                # Already committed locally: diff against that commit, since
+                # `svn diff` would compare against the unpushed BASE instead.
+                blob = queued[entry.path]
+                old = ctx.state.objects.read(blob) if blob else b""
+                absolute = ctx.abs_path(entry.path)
+                current = absolute.read_bytes() if absolute.is_file() else b""
+                chunks.extend(formatting.unified_diff(old, current, entry.path))
+            else:
+                unstaged_targets.append(ctx.svn_target(entry.path))
 
     text = "\n".join(chunks) + ("\n" if chunks else "")
     if unstaged_targets:

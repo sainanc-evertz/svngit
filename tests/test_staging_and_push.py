@@ -314,3 +314,56 @@ def test_push_refreshes_the_base_revision(harness):
     harness.svn.respond("commit", "Committed revision 43.\n", first=True)
     harness.run("push")
     assert harness.svn.argv_for("update") is not None
+
+
+# ----------------------------------------------------------------------
+# a queued commit is part of what the working copy is "based on"
+# ----------------------------------------------------------------------
+def test_status_is_clean_after_a_deferred_commit(harness):
+    """svn still calls the file modified because nothing is pushed, but git
+    would call it committed."""
+    harness.write("a.txt", "content\n")
+    harness.set_status([("a.txt", "unversioned")])
+    harness.run("add", "a.txt")
+    harness.set_status([("a.txt", "added")])
+    commit(harness, "local work")
+    harness.reset_output()
+
+    harness.run("status")
+    assert "nothing to commit" in harness.out or "Changes to be committed" not in harness.out
+    assert "local work" in harness.out  # still reported as unpushed
+
+
+def test_editing_after_a_deferred_commit_shows_as_unstaged(harness):
+    path = harness.write("a.txt", "committed\n")
+    harness.set_status([("a.txt", "modified")])
+    harness.run("add", "a.txt")
+    commit(harness)
+    path.write_text("edited afterwards\n")
+
+    from svngit import status as status_mod
+
+    report = status_mod.compute(harness.ctx)
+    assert {e.path: e.code for e in report.entries} == {"a.txt": " M"}
+
+
+def test_diff_after_a_deferred_commit_shows_nothing(harness):
+    harness.write("a.txt", "content\n")
+    harness.set_status([("a.txt", "modified")])
+    harness.run("add", "a.txt")
+    commit(harness)
+    harness.reset_output()
+
+    harness.run("diff")
+    assert harness.out.strip() == ""
+
+
+def test_queued_blobs_takes_the_newest_commit_for_a_path(harness):
+    for text in ("first\n", "second\n"):
+        harness.write("a.txt", text)
+        harness.set_status([("a.txt", "modified")])
+        harness.run("add", "a.txt")
+        commit(harness, text.strip())
+
+    blobs = harness.ctx.state.queued_blobs()
+    assert harness.ctx.state.objects.read(blobs["a.txt"]) == b"second\n"

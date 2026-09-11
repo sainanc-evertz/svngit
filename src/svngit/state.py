@@ -216,6 +216,22 @@ class State:
             for item in self._data["commits"]
         ]
 
+    def queued_blobs(self) -> Dict[str, Optional[str]]:
+        """Path -> blob recorded by the newest queued commit touching it, or
+        None where that commit deleted the path.
+
+        Queued commits are not on the server, so BASE alone is not what the
+        working copy is "based on" locally: a file whose content matches its
+        newest queued commit has no uncommitted change, even though Subversion
+        still reports it as modified. Later commits overwrite earlier ones
+        because the queue is walked oldest to newest.
+        """
+        result: Dict[str, Optional[str]] = {}
+        for commit in self.commits:
+            for change in commit.changes:
+                result[change.path] = None if change.action == DELETE else change.blob
+        return result
+
     def add_commit(self, commit: LocalCommit) -> None:
         self._data["commits"].append(asdict(commit))
 

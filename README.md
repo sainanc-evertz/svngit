@@ -170,9 +170,19 @@ Nothing touches the server.
 because a Subversion working copy has nowhere to keep revisions it has not
 applied. `git pull` applies them.
 
+`git add -p` works, because the emulated index stores content rather than a
+flag: staging a hunk writes a blob that is neither BASE nor the worktree, and
+everything downstream already reads that blob. It supports `y n q a d s ?`;
+there is no `e` (manual hunk editing) or `j`/`k` navigation.
+
+A queued local commit counts as part of what your working copy is based on.
+Subversion still calls such a file modified, since nothing has been pushed, but
+`git status`, `git diff` and `git add -p` all treat it as committed — so a hunk
+you have already committed locally is not offered to you a second time.
+
 Commands with no honest translation say so and point at the nearest thing —
-`rebase`, `bisect`, `reflog`, `submodule`, `worktree`, `gc`, `am`, `notes`, and
-`git add -p`.
+`rebase`, `bisect`, `reflog`, `submodule`, `worktree`, `gc`, `am`, and
+`notes`.
 
 The full command-by-command mapping is in [docs/COMMANDS.md](docs/COMMANDS.md).
 

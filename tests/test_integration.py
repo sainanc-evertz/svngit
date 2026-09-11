@@ -373,3 +373,85 @@ def test_init_standalone_creates_a_usable_checkout(tmp_path, monkeypatch):
     assert dispatch(ctx2, "add", ["a.txt"]) == 0
     assert dispatch(ctx2, "commit", ["-m", "first"]) == 0
     assert dispatch(ctx2, "push", []) == 0
+
+
+PATCH_BASE = "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\n"
+
+
+def _seed(cli, wc, name="a.txt", content=PATCH_BASE):
+    (wc / name).write_text(content)
+    cli("add", name)
+    cli("commit", "-m", "seed")
+    cli("push")
+
+
+def _run_patch(svn_repo, answers, cwd=None):
+    """Drive `git add -p` with scripted answers against the real checkout."""
+    import io
+
+    from svngit.cli import dispatch
+    from svngit.context import Context
+
+    stdout, stderr = io.StringIO(), io.StringIO()
+    stdin = io.StringIO("".join(a + "\n" for a in answers))
+    ctx = Context(cwd=cwd or svn_repo["wc"], stdout=stdout, stderr=stderr, stdin=stdin)
+    code = dispatch(ctx, "add", ["-p"])
+    return code, stdout.getvalue(), stderr.getvalue()
+
+
+def test_add_patch_commits_only_the_staged_hunk(cli, svn_repo):
+    wc = svn_repo["wc"]
+    _seed(cli, wc)
+
+    (wc / "a.txt").write_text(PATCH_BASE.replace("two", "TWO").replace("ten", "TEN"))
+    code, out, err = _run_patch(svn_repo, ["y", "n"])
+    assert code == 0, err
+
+    code, out, _ = cli("status", "--short")
+    assert "MM" in out
+
+    cli("commit", "-m", "just the first change")
+    code, _, err = cli("push")
+    assert code == 0, err
+
+    on_server = svn("cat", svn_repo["url"] + "/trunk/a.txt")
+    assert "TWO" in on_server
+    assert "TEN" not in on_server  # the hunk we declined must not be pushed
+    # ...and the declined change is still in the working copy, unstaged.
+    assert "TEN" in (wc / "a.txt").read_text()
+
+
+def test_add_patch_then_stage_the_rest(cli, svn_repo):
+    wc = svn_repo["wc"]
+    _seed(cli, wc)
+    final = PATCH_BASE.replace("two", "TWO").replace("ten", "TEN")
+    (wc / "a.txt").write_text(final)
+
+    _run_patch(svn_repo, ["y", "n"])
+    cli("commit", "-m", "first half")
+    _run_patch(svn_repo, ["y"])  # only the remaining hunk is offered
+    cli("commit", "-m", "second half")
+    code, _, err = cli("push")
+    assert code == 0, err
+
+    assert svn("cat", svn_repo["url"] + "/trunk/a.txt") == final
+    code, out, _ = cli("status", "--short")
+    assert out.strip() == ""  # working copy clean once both halves are pushed
+
+
+def test_immediate_mode_commits_the_staged_hunk_not_the_worktree(cli, svn_repo):
+    """svn commit sends the file on disk; git sends what was staged. In
+    immediate mode the staged blob has to be swapped in around the commit."""
+    wc = svn_repo["wc"]
+    _seed(cli, wc)
+    cli("config", "svngit.commitmode", "immediate")
+
+    (wc / "a.txt").write_text(PATCH_BASE.replace("two", "TWO").replace("ten", "TEN"))
+    _run_patch(svn_repo, ["y", "n"])
+    code, out, err = cli("commit", "-m", "only the first hunk")
+    assert code == 0, err
+
+    on_server = svn("cat", svn_repo["url"] + "/trunk/a.txt")
+    assert "TWO" in on_server and "TEN" not in on_server
+    # The unstaged change must survive the commit.
+    assert "TEN" in (wc / "a.txt").read_text()

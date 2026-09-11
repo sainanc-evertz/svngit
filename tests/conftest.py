@@ -184,7 +184,10 @@ class Harness:
         self.state_dir = state_dir
         self.stdout = io.StringIO()
         self.stderr = io.StringIO()
-        self.ctx = Context(cwd=wc, stdout=self.stdout, stderr=self.stderr)
+        self.stdin = io.StringIO()
+        self.ctx = Context(
+            cwd=wc, stdout=self.stdout, stderr=self.stderr, stdin=self.stdin
+        )
         self.svn = RecordingSvn(cwd=str(wc), stderr=self.stderr)
         self.ctx.svn = self.svn
         from svngit.state import State
@@ -199,6 +202,11 @@ class Harness:
         them for the absolute targets svngit passes."""
         rows = [(str(self.wc / e[0]), *e[1:]) for e in entries]
         self.svn.respond("status", status_xml(rows), first=True)
+
+    def answer(self, *responses: str) -> None:
+        """Queue answers for an interactive prompt, e.g. `git add -p`."""
+        self.stdin.write("".join(r + "\n" for r in responses))
+        self.stdin.seek(0)
 
     def set_log(self, entries: Sequence[dict]) -> None:
         self.svn.respond("log", log_xml(entries), first=True)

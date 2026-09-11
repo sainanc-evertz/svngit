@@ -35,12 +35,16 @@ class Context:
         trace: bool = False,
         stdout=None,
         stderr=None,
+        stdin=None,
         svn_binary: Optional[str] = None,
     ):
         self.cwd = Path(cwd or Path.cwd())
         self.dry_run = dry_run
         self.stdout = stdout if stdout is not None else sys.stdout
         self.stderr = stderr if stderr is not None else sys.stderr
+        #: Only read by interactive commands (`git add -p`); injectable so the
+        #: prompt loop can be exercised without a terminal.
+        self.stdin = stdin if stdin is not None else sys.stdin
         self.svn = SvnClient(
             cwd=str(self.cwd),
             binary=svn_binary,

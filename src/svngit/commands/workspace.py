@@ -183,17 +183,11 @@ def cmd_add(ctx, argv: List[str]) -> int:
         argv,
         flags=["all", "A", "update", "u", "force", "f", "verbose", "v", "dry-run", "n", "patch", "p", "intent-to-add", "N"],
     )
-    if opts.has("patch", "p"):
-        raise UsageError(
-            "git add -p needs an interactive index, which Subversion has no "
-            "equivalent for. Stage whole files instead."
-        )
-
     stage_all = opts.has("all", "A")
     tracked_only = opts.has("update", "u")
     targets = opts.paths
 
-    if not targets and not (stage_all or tracked_only):
+    if not targets and not (stage_all or tracked_only or opts.has("patch", "p")):
         raise UsageError("nothing specified, nothing added.\nhint: maybe you wanted 'git add .'?")
 
     if targets == ["."] or targets == [":/"]:
@@ -202,6 +196,15 @@ def cmd_add(ctx, argv: List[str]) -> int:
 
     scope = ctx.to_wc_paths(targets) if targets else None
     report = status_mod.compute(ctx, scope)
+
+    if opts.has("patch", "p"):
+        from .interactive import stage_patch
+
+        # Untracked files have no hunks to choose between, so only mention
+        # them when the user named one explicitly.
+        chosen = report.entries if targets else [e for e in report.entries if not e.untracked]
+        return stage_patch(ctx, chosen)
+
     staged_count = 0
 
     for entry in report.entries:

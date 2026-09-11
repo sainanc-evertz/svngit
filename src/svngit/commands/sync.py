@@ -15,10 +15,11 @@ import getpass
 import os
 import subprocess
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Set
 
-from .. import formatting, status as status_mod
+from .. import formatting, hunks as hunks_mod, status as status_mod
 from ..cliargs import parse
 from ..errors import SvnGitError, UsageError
 from ..state import ADD, DELETE, Change, LocalCommit, make_commit_id, now
@@ -168,7 +169,9 @@ def _commit_deferred(ctx, message: str, index, opts) -> int:
 
 def _commit_immediate(ctx, message: str, paths: Sequence[str], opts) -> int:
     targets = _commit_targets(ctx, paths)
-    result = ctx.svn.run("commit", "-m", message, *targets, mutating=True)
+    index = ctx.state.index
+    with _staged_content_on_disk(ctx, index):
+        result = ctx.svn.run("commit", "-m", message, *targets, mutating=True)
     ctx.state.clear_index()
     ctx.state.save()
     revision = _parse_committed_revision(result.stdout)
@@ -179,6 +182,35 @@ def _commit_immediate(ctx, message: str, paths: Sequence[str], opts) -> int:
         else:
             ctx.echo(result.stdout.strip() or "committed")
     return 0
+
+
+@contextmanager
+def _staged_content_on_disk(ctx, index):
+    """Swap the staged content onto disk for the duration of a commit.
+
+    `svn commit` sends whatever is in the working copy, but git commits what
+    was staged. Those differ whenever a file was edited after `git add`, or
+    staged a hunk at a time with `git add -p`, so the staged blob has to be on
+    disk while svn reads the file -- and the worktree put back afterwards.
+    """
+    objects = ctx.state.objects
+    original = {}
+    for path, entry in index.items():
+        if entry.action == DELETE or entry.blob is None:
+            continue
+        absolute = ctx.abs_path(path)
+        if not absolute.is_file():
+            continue
+        current = ctx.snapshot(path)
+        if current == entry.blob:
+            continue  # worktree already matches the index; nothing to swap
+        original[path] = current
+        absolute.write_bytes(objects.read(entry.blob))
+    try:
+        yield
+    finally:
+        for path, blob in original.items():
+            ctx.abs_path(path).write_bytes(objects.read(blob))
 
 
 def _author(ctx, opts) -> str:
@@ -197,15 +229,15 @@ def _author(ctx, opts) -> str:
 def _summarise(ctx, changes: Sequence[Change]) -> List[str]:
     """git's post-commit summary: file count, line counts, mode changes.
 
-    Line counts come from `svn diff` against BASE, which reads the pristine
-    copy in .svn and so costs nothing over the network.
+    Counted from the staged blobs against their pristine copies, not from
+    `svn diff` -- the working copy can hold changes that were deliberately not
+    staged (`git add -p`), and those must not be counted here.
     """
     insertions = deletions = 0
-    targets = [ctx.svn_target(c.path) for c in changes]
-    if targets:
-        result = ctx.svn.run("diff", *targets, check=False)
-        if result.ok:
-            insertions, deletions = formatting.count_diff_lines(result.stdout)
+    for change in changes:
+        added, removed = _count_staged_lines(ctx, change)
+        insertions += added
+        deletions += removed
 
     summary = "%d file%s changed" % (len(changes), "" if len(changes) == 1 else "s")
     if insertions:
@@ -221,6 +253,28 @@ def _summarise(ctx, changes: Sequence[Change]) -> List[str]:
         elif change.action == DELETE:
             lines.append("delete mode %s %s" % (mode, change.path))
     return lines
+
+
+def _count_staged_lines(ctx, change: Change) -> tuple:
+    """Lines added and removed by one staged change, versus its BASE."""
+    objects = ctx.state.objects
+    new = objects.read(change.blob) if change.blob else b""
+    old = b""
+    if change.action != ADD:
+        result = ctx.svn.run(
+            "cat", "-r", "BASE", ctx.svn_target(change.path), check=False
+        )
+        old = result.stdout.encode("utf-8") if result.ok else b""
+    if change.action == DELETE:
+        new = b""
+    if hunks_mod.is_binary(old) or hunks_mod.is_binary(new):
+        return (0, 0)
+
+    diff = hunks_mod.diff_file(
+        old.decode("utf-8", errors="replace"), new.decode("utf-8", errors="replace")
+    )
+    every_change = {i for i, op in enumerate(diff.ops) if op[0] != "equal"}
+    return hunks_mod.summarise(diff, every_change)
 
 
 def _parse_committed_revision(output: str) -> Optional[int]:

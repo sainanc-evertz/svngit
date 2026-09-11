@@ -79,10 +79,13 @@ def test_add_u_skips_untracked(harness):
     assert set(harness.ctx.state.index) == {"a.txt"}
 
 
-def test_add_patch_is_refused_with_a_reason(harness):
-    code = harness.run("add", "-p")
-    assert code != 0
-    assert "no equivalent" in harness.err
+def test_add_patch_stages_a_chosen_hunk(harness):
+    harness.write("a.txt", "one\nCHANGED\nthree\n")
+    harness.set_status([("a.txt", "modified")])
+    harness.svn.respond("cat", "one\ntwo\nthree\n", first=True)
+    harness.answer("y")
+    assert harness.run("add", "-p") == 0
+    assert harness.ctx.state.is_staged("a.txt")
 
 
 def test_rm_maps_to_svn_delete(harness):
