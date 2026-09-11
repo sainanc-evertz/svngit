@@ -120,6 +120,65 @@ stays clean for everyone else and nothing can be committed by accident.
 Staging copies file content into a local object store, which is why editing a
 file after `git add` shows up as `MM` and commits the version you staged.
 
+## What it covers
+
+42 commands. Everything below is implemented and tested; the exact `svn`
+invocation each one produces is in [docs/COMMANDS.md](docs/COMMANDS.md).
+
+**Working copy** — `clone` (descends into trunk) · `init` · `status` · `add`
+(including `-p`, `-e` and `-N`) · `rm` · `mv` · `restore` · `reset` · `clean` ·
+`sparse-checkout` (Subversion's own sparse directories)
+
+**History and search** — `log` (including `-S`/`-G`) · `show` · `diff` ·
+`blame` · `shortlog` · `describe` · `whatchanged` · `grep` (versioned files
+only) · `check-ignore`
+
+**Sharing** — `commit` · `push` · `pull` · `fetch` · `stash` (including `-p`)
+
+**Branching** — `branch` · `checkout` · `switch` · `merge` · `cherry-pick` ·
+`revert` · `tag`
+
+**Patches and archives** — `apply` · `format-patch` · `archive`
+
+**Tools and plumbing** — `difftool` · `mergetool` · `config` · `remote` ·
+`rev-parse` · `ls-files` · `help` · `version`
+
+The usual short forms work too: `co` `ci` `st` `br` `df` `lg` `cp` `stage`
+`unstage` `annotate`.
+
+Three of these are worth knowing about because they are not obvious
+translations. `grep` has no `svn` counterpart at all, so it walks the tree
+itself, skipping `.svn` and anything unversioned or ignored. `describe` names
+a revision after the newest tag copied at or before it, since a Subversion tag
+is a directory copy and the revision it came from is its history. `apply` and
+`format-patch` round-trip with each other and with git's own, because the
+patch svngit writes is converted from `svn diff`'s headers into git's.
+
+### Commands with no Subversion meaning
+
+Twenty-four of them, and each says what is missing and what to reach for
+instead rather than failing as an unknown command:
+
+```console
+$ git rebase main
+fatal: git rebase has no Subversion equivalent: Subversion has no way to
+rewrite history. `git pull` already replays your local changes on top of
+the server's, which is what a rebase onto the upstream would do.
+```
+
+The list is `rebase` `bisect` `reflog` `submodule` `worktree` `gc` `am`
+`notes` `bundle` `range-diff` `rerere` `filter-branch` `fast-export`
+`fast-import` `maintenance` `scalar` `backfill` `count-objects` `fsck`
+`replace` `gitk` `gui` `citool` `instaweb`.
+
+Individual options get the same treatment. Anything svngit cannot honour is
+refused with the reason (`git merge --strategy`, `git clone --bare`,
+`git tag --sign`); anything accepted that changes nothing here says so on
+stderr (`git push --tags`, `git pull --ff-only`). A test walks every option
+the parser declares and fails the build on any that is silently ignored,
+because an option that quietly does nothing is worse than one that is
+rejected — you asked for something and believed you got it.
+
 ## commit and push
 
 Git commits locally and pushes later. Subversion commits straight to the
@@ -174,42 +233,44 @@ and `pop` three-way merges so a file you kept working on is not clobbered.
 because a Subversion working copy has nowhere to keep revisions it has not
 applied. `git pull` applies them.
 
-`git add -p` and `git add -e` both work, because the emulated index stores
-content rather than a flag: staging part of a file writes a blob that is
-neither BASE nor the worktree, and everything downstream already reads that
-blob. `-p` takes git's full answer set -- `y n q a d s e j J k K g / ?` -- so you
-can move between hunks, jump to one by number, or search for one by regex, and
-the prompt offers only the moves that exist from where you are. `e` opens the
-current hunk alone in `$EDITOR`; `-e` opens the whole diff instead. Both can
-stage text that was never on disk, which is what editing a patch is for. Hunk
-headers are recalculated on the way back in, so there is no need to fix the
-`@@` counts by hand. An edit that fails to apply is refused -- `-p` puts you
-back in the editor, `-e` stages nothing at all.
-
 A queued local commit counts as part of what your working copy is based on.
 Subversion still calls such a file modified, since nothing has been pushed, but
 `git status`, `git diff` and `git add -p` all treat it as committed — so a hunk
 you have already committed locally is not offered to you a second time.
 
-Commands with no honest translation say so and point at the nearest thing —
-`rebase`, `bisect`, `reflog`, `submodule`, `worktree`, `gc`, `am`, and
-`notes`.
+## Staging part of a file
 
-Individual options get the same treatment. Anything svngit cannot honour is
-refused with the reason (`git merge --strategy`, `git clone --bare`,
-`git tag --sign`); anything that is accepted but changes nothing here says so
-on stderr (`git push --tags`, `git pull --ff-only`). A test walks every
-option the parser declares and fails the build on any that is silently
-ignored, because an option that quietly does nothing is worse than one that
-is rejected — you asked for something and believed you got it.
+`git add -p` and `git add -e` both work, because the emulated index stores
+content rather than a flag: staging part of a file writes a blob that is
+neither BASE nor the worktree, and everything downstream already reads it.
 
-Beyond the everyday set, svngit also has `grep` (versioned files only),
-`apply` and `format-patch` (which round-trip with each other), `archive`
-(`svn export` into a tar or zip), `shortlog`, `describe` (named from the
-nearest tag directory), `check-ignore`, `sparse-checkout` (Subversion's own
-sparse directories), and `difftool` / `mergetool`.
+`-p` takes git's full answer set — `y n q a d s e j J k K g / ?` — so you can
+move between hunks, jump to one by number, or search for one by regex, and the
+prompt offers only the moves that exist from where you are.
 
-The full command-by-command mapping is in [docs/COMMANDS.md](docs/COMMANDS.md).
+```console
+$ git add -p
+@@ -1,5 +1,6 @@
+ def parse(x):
+-    return x
++    return x.strip()   # the fix
+ 
+ def main():
++    print("debug scratch")
+     pass
+(1/1) Stage this hunk [y,n,q,a,d,s,e,?]? s
+Split into 2 hunks.
+```
+
+`e` opens the current hunk alone in `$EDITOR`; `-e` opens the whole diff
+instead. Both can stage text that was never on disk, which is what editing a
+patch is for. Hunk headers are recalculated on the way back in, so there is no
+need to fix the `@@` counts by hand, and an edit that fails to apply is
+refused — `-p` puts you back in the editor, `-e` stages nothing at all.
+
+`git add -N` records a new file with empty content, which is what lets `-p`
+pick hunks out of one. It is not committed until you stage it properly, and
+`git commit` says so rather than committing an empty file.
 
 ## Configuration
 
@@ -262,9 +323,9 @@ apt install subversion      # Debian/Ubuntu
 
 ## Status
 
-Alpha. The command surface in `docs/COMMANDS.md` is implemented, and the whole
-clone → add → commit → push → branch → merge cycle is exercised end to end
-against a real Subversion repository in the test suite.
+Alpha. All 42 commands are implemented, and the whole clone → add → commit →
+push → branch → merge cycle is exercised end to end against a real Subversion
+repository in the test suite.
 
 What that does *not* cover: a large real-world repository, an actual network
 server (the tests use `file://`), authentication, externals, unusual layouts,

@@ -207,43 +207,59 @@ Working copy
    clone      svn checkout (descends into trunk by default)
    init       explains the Subversion equivalent; --standalone creates a repo
    status     svn status, rendered as git's two-column status
-   add        svn add for new files, plus svngit's staging area (-p, -e)
+   add        svn add for new files, plus svngit's staging area (-p, -e, -N)
    rm / mv    svn delete / svn move
    restore    svn revert (or unstage with --staged)
    reset      unstage, undo a local commit (--soft), or svn revert (--hard)
    clean      delete unversioned files
+   sparse-checkout   svn update --set-depth
 
-History
-   log        svn log
+History and search
+   log        svn log (-S / -G read each revision's diff)
    show       svn log -v plus the revision's diff
    diff       svn diff, honouring the staging area
    blame      svn blame
+   shortlog   svn log grouped by author
+   describe   name a revision after the nearest tag
+   whatchanged   log --name-status
+   grep       search versioned files
+   check-ignore  test a path against svn:ignore
 
 Sharing
    commit     record a local commit (see svngit.commitmode)
    push       replay local commits as svn commits
    pull       svn update
    fetch      list revisions available on the server
+   stash      svn diff + svn patch, stored locally (-p picks hunks)
 
 Branching
-   branch     list / create / delete branch directories
+   branch     list / create / copy / delete branch directories
    checkout   svn switch, or restore files
    switch     svn switch
    merge      svn merge, committed with its mergeinfo
    cherry-pick / revert   svn merge -c / svn merge -c -N
    tag        list / create / delete tag directories
-   stash      svn diff + svn patch, stored locally
 
-Plumbing
+Patches and archives
+   apply      apply a patch to the working copy
+   format-patch   one mbox patch file per revision
+   archive    svn export into a tar or zip
+
+Tools and plumbing
+   difftool / mergetool   hand files to an external program
    config     svngit's own per-working-copy settings
    remote     shows the repository URL
    rev-parse  resolve a revision, or print paths
+   ls-files   list versioned files
 
 Global options
    --dry-run        print the svn commands instead of running the ones that
                     would change something
    --trace          print every svn command as it runs
    --svngit-help    this text
+
+Commands with no Subversion equivalent (rebase, bisect, submodule and
+others) explain what to use instead when you run them.
 
 Full command mapping: docs/COMMANDS.md
 """
