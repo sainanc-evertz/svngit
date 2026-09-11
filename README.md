@@ -1,4 +1,4 @@
-# svngit
+# SVINGIT
 
 **Type git commands. Subversion does the work.**
 
