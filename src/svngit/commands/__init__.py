@@ -101,5 +101,28 @@ NO_EQUIVALENT = {
 }
 
 
+#: Options accepted because svngit already behaves that way, so honouring them
+#: means doing nothing. Keyed by (function, option). Listed explicitly rather
+#: than left to a comment, because `test_options.py` walks every declared
+#: option and fails on any that is neither read, refused, reported as having
+#: no effect, nor named here -- which is how a silently-ignored flag gets in.
+DEFAULT_BEHAVIOUR = {
+    ("cmd_branch", "a"): "every branch is on the server, so the default listing is already --all",
+    ("cmd_branch", "all"): "every branch is on the server, so the default listing is already --all",
+    ("cmd_revert", "no-edit"): "svngit never opens an editor for a revert",
+    ("cmd_tag", "a"): "every Subversion tag is a copy made with a log message",
+    ("cmd_tag", "annotate"): "every Subversion tag is a copy made with a log message",
+    ("cmd_log", "abbrev-commit"): "a revision number is already its shortest form",
+    ("cmd_log", "follow"): "svn log traverses copies unless --stop-on-copy is given",
+    ("cmd_diff", "no-color"): "svngit output is never colourised",
+    ("cmd_config", "local"): "per-working-copy is the only scope svngit has",
+    ("cmd_rev_parse", "short"): "a revision number is already its shortest form",
+    ("cmd_ls_files", "c"): "listing the tracked files is the default",
+    ("cmd_ls_files", "cached"): "listing the tracked files is the default",
+    ("cmd_status", "long"): "the long format is the default",
+    ("cmd_reset", "mixed"): "--mixed is the default reset mode",
+}
+
+
 def resolve(name: str) -> Optional[Command]:
     return REGISTRY.get(ALIASES.get(name, name))

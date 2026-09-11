@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from .. import formatting, status as status_mod
-from ..cliargs import parse
+from ..cliargs import no_effect, parse, refuse
 from ..errors import UsageError, SvnGitError
 from ..state import ADD, DELETE, MODIFY
 
@@ -22,6 +22,14 @@ def cmd_clone(ctx, argv: List[str]) -> int:
         flags=["bare", "quiet", "q", "no-checkout", "n", "full"],
         values=["branch", "b", "depth", "revision", "r"],
     )
+    refuse("clone", opts, {
+        "bare": "a Subversion checkout is always a working copy. To inspect a "
+                "repository without one, use the URL directly: `svn log <url>`.",
+        "no-checkout": "a Subversion checkout is the only thing `clone` produces; "
+                       "there is no separate history to fetch first.",
+        "n": "a Subversion checkout is the only thing `clone` produces; "
+             "there is no separate history to fetch first.",
+    })
     if not opts.positionals:
         raise UsageError("git clone <repository-url> [<directory>]")
 
@@ -87,6 +95,14 @@ def _clone_destination(url: str, checkout_url: str) -> str:
 # ----------------------------------------------------------------------
 def cmd_init(ctx, argv: List[str]) -> int:
     opts = parse(argv, flags=["standalone", "bare", "quiet", "q"], values=["initial-branch", "b"])
+    refuse("init", opts, {
+        "bare": "`svnadmin create` already makes a server-side repository with "
+                "no working copy; --standalone then checks one out for you.",
+    })
+    no_effect(ctx, "init", opts, {
+        "initial-branch": "the standard Subversion layout names it trunk.",
+        "b": "the standard Subversion layout names it trunk.",
+    })
     directory = Path(opts.positionals[0]).expanduser() if opts.positionals else ctx.cwd
 
     if not opts.has("standalone"):
@@ -132,11 +148,18 @@ def cmd_init(ctx, argv: List[str]) -> int:
 def cmd_status(ctx, argv: List[str]) -> int:
     opts = parse(
         argv,
-        flags=["short", "s", "porcelain", "branch", "b", "long", "ignored", "verbose", "v", "untracked-files", "u"],
-        values=["untracked-files="],
+        flags=["short", "s", "porcelain", "branch", "b", "long", "ignored", "verbose", "v"],
+        values=["untracked-files", "u"],
     )
+    # --long is the default format; -v adds nothing svngit can show.
     paths = ctx.to_wc_paths(opts.paths) if opts.paths else None
     report = status_mod.compute(ctx, paths, include_ignored=opts.has("ignored"))
+
+    mode = str(opts.first("untracked-files", "u", default="normal"))
+    if mode == "no":
+        report.entries = [e for e in report.entries if not e.untracked]
+    elif mode not in ("normal", "all"):
+        raise UsageError("invalid untracked files mode '%s' (no, normal, all)" % mode)
 
     if opts.has("porcelain") or opts.has("short", "s"):
         if opts.has("branch", "b"):
@@ -183,6 +206,7 @@ def cmd_add(ctx, argv: List[str]) -> int:
         argv,
         flags=["all", "A", "update", "u", "force", "f", "verbose", "v", "dry-run", "n", "patch", "p", "edit", "e", "intent-to-add", "N"],
     )
+    intent_only = opts.has("intent-to-add", "N")
     stage_all = opts.has("all", "A")
     tracked_only = opts.has("update", "u")
     targets = opts.paths
@@ -217,7 +241,13 @@ def cmd_add(ctx, argv: List[str]) -> int:
             continue
         if entry.untracked and (tracked_only or (not stage_all and scope is None)):
             continue
-        if _stage_one(ctx, entry, dry_run=opts.has("dry-run", "n"), verbose=opts.has("verbose", "v")):
+        if _stage_one(
+            ctx,
+            entry,
+            dry_run=opts.has("dry-run", "n"),
+            verbose=opts.has("verbose", "v"),
+            intent_only=intent_only,
+        ):
             staged_count += 1
 
     if not opts.has("dry-run", "n"):
@@ -227,7 +257,8 @@ def cmd_add(ctx, argv: List[str]) -> int:
     return 0
 
 
-def _stage_one(ctx, entry, dry_run: bool = False, verbose: bool = False) -> bool:
+def _stage_one(ctx, entry, dry_run: bool = False, verbose: bool = False,
+               intent_only: bool = False) -> bool:
     """Stage a single path, running whatever svn scheduling it needs."""
     abs_path = ctx.abs_path(entry.path)
 
@@ -237,7 +268,15 @@ def _stage_one(ctx, entry, dry_run: bool = False, verbose: bool = False) -> bool
         if dry_run:
             return True
         ctx.svn.run("add", "--parents", ctx.svn_target(entry.path), mutating=True)
-        ctx.state.stage(entry.path, ADD, ctx.snapshot(entry.path), _is_executable(abs_path))
+        if intent_only:
+            # git -N records the path with empty content, so the file shows as
+            # AM and `git add -p` can pick hunks out of a brand new file.
+            ctx.state.stage(
+                entry.path, ADD, ctx.state.objects.write(b""),
+                _is_executable(abs_path), intent=True,
+            )
+        else:
+            ctx.state.stage(entry.path, ADD, ctx.snapshot(entry.path), _is_executable(abs_path))
         return True
 
     if entry.worktree == DELETE:
@@ -313,6 +352,9 @@ def cmd_rm(ctx, argv: List[str]) -> int:
 
 def cmd_mv(ctx, argv: List[str]) -> int:
     opts = parse(argv, flags=["force", "f", "verbose", "v", "dry-run", "n", "k"])
+    no_effect(ctx, "mv", opts, {
+        "k": "svngit stops on the first error rather than skipping it.",
+    })
     if len(opts.paths) < 2:
         raise UsageError("git mv <source>... <destination>")
 
@@ -341,6 +383,15 @@ def cmd_mv(ctx, argv: List[str]) -> int:
 # ----------------------------------------------------------------------
 def cmd_reset(ctx, argv: List[str]) -> int:
     opts = parse(argv, flags=["soft", "mixed", "hard", "keep", "merge", "quiet", "q"])
+    refuse("reset", opts, {
+        "keep": "resetting to another revision while keeping local changes needs "
+                "history rewriting. Use `git stash`, `git reset --hard <rev>`, "
+                "then `git stash pop`.",
+        "merge": "resetting to another revision while keeping local changes needs "
+                 "history rewriting. Use `git stash`, `git reset --hard <rev>`, "
+                 "then `git stash pop`.",
+    })
+    # --mixed is the default and needs no handling.
     from ..cliargs import split_revisions_and_paths
 
     revisions, paths = split_revisions_and_paths(ctx, opts.positionals)

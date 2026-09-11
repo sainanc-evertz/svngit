@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Set
 
 from .. import formatting, hunks as hunks_mod, status as status_mod
-from ..cliargs import parse
+from ..cliargs import no_effect, parse, refuse
 from ..errors import SvnGitError, UsageError
 from ..state import ADD, DELETE, Change, LocalCommit, make_commit_id, now
 from ..status import hash_file
@@ -45,6 +45,12 @@ def cmd_commit(ctx, argv: List[str]) -> int:
         values=["message", "m", "file", "F", "author", "reuse-message", "C"],
     )
 
+    no_effect(ctx, "commit", opts, {
+        "no-verify": "svngit runs no commit hooks, so there is nothing to skip.",
+        "verbose": "the diff is not shown in the editor; use `git diff --cached`.",
+        "v": "the diff is not shown in the editor; use `git diff --cached`.",
+    })
+
     if opts.has("all", "a"):
         _stage_all_tracked(ctx)
 
@@ -52,12 +58,22 @@ def cmd_commit(ctx, argv: List[str]) -> int:
         return _amend(ctx, opts)
 
     index = ctx.state.index
+    intent_only = {path for path, entry in index.items() if entry.intent}
+    for path in intent_only:
+        ctx.warn(
+            "warning: %s was added with -N and has no staged content; "
+            "run `git add %s` to include it" % (path, path)
+        )
+        del index[path]
+
     if not index and not opts.has("allow-empty"):
         report = status_mod.compute(ctx)
         _report_nothing_to_commit(ctx, report)
         return 1
 
     message = _resolve_message(ctx, opts, index)
+    if opts.has("signoff", "s"):
+        message = _add_signoff(ctx, message, opts)
     if not message.strip() and not opts.has("allow-empty"):
         raise SvnGitError("aborting commit due to empty commit message")
 
@@ -86,10 +102,35 @@ def _report_nothing_to_commit(ctx, report) -> None:
         ctx.echo("nothing to commit, working tree clean")
 
 
+def _add_signoff(ctx, message: str, opts) -> str:
+    """Append git's Signed-off-by trailer, if it is not already there."""
+    author = _author(ctx, opts)
+    trailer = "Signed-off-by: %s" % formatting.author_line(author, ctx.info.repos_uuid)
+    if trailer in message:
+        return message
+    body = message.rstrip("\n")
+    separator = "\n\n" if body and not body.endswith("\n") else "\n"
+    # A message that already ends in trailers takes one more line, not a gap.
+    if body.rstrip().rsplit("\n", 1)[-1].strip().startswith(
+        ("Signed-off-by:", "Co-authored-by:", "Reviewed-by:")
+    ):
+        separator = "\n"
+    return body + separator + trailer + "\n"
+
+
 def _resolve_message(ctx, opts, index) -> str:
     message = opts.first("message", "m")
     if message is not None:
         return str(message)
+    reuse = opts.first("reuse-message", "C")
+    if reuse:
+        from .. import revisions as rev_mod
+
+        revision = rev_mod.resolve(ctx, str(reuse), str(ctx.wc_root))
+        entries = ctx.svn.log(str(ctx.wc_root), revision=str(revision))
+        if not entries:
+            raise SvnGitError("could not read the log message of %s" % reuse)
+        return entries[0].message
     file_arg = opts.first("file", "F")
     if file_arg:
         if file_arg == "-":
@@ -142,7 +183,7 @@ def _commit_deferred(ctx, message: str, index, opts) -> int:
         changes=changes,
     )
     ctx.state.add_commit(commit)
-    ctx.state.clear_index()
+    _clear_committed(ctx, changes)
     ctx.state.save()
 
     if not opts.has("quiet", "q"):
@@ -153,12 +194,20 @@ def _commit_deferred(ctx, message: str, index, opts) -> int:
     return 0
 
 
+def _clear_committed(ctx, changes) -> None:
+    """Empty the index of what was just committed, keeping anything that was
+    not -- notably paths recorded with `git add -N`."""
+    for change in changes:
+        ctx.state.unstage(change.path)
+
+
 def _commit_immediate(ctx, message: str, paths: Sequence[str], opts) -> int:
     targets = _commit_targets(ctx, paths)
     index = ctx.state.index
     with _staged_content_on_disk(ctx, index):
         result = ctx.svn.run("commit", "-m", message, *targets, mutating=True)
-    ctx.state.clear_index()
+    for path in paths:
+        ctx.state.unstage(path)
     ctx.state.save()
     revision = _parse_committed_revision(result.stdout)
     _refresh_base_revision(ctx)
@@ -349,6 +398,14 @@ def cmd_push(ctx, argv: List[str]) -> int:
         flags=["force", "f", "quiet", "q", "verbose", "v", "dry-run", "n", "tags", "all", "set-upstream", "u", "delete", "d"],
         values=["repo"],
     )
+    no_effect(ctx, "push", opts, {
+        "tags": "Subversion tags are directories and are created on the server "
+                "by `git tag`; there is nothing left to push.",
+        "set-upstream": "Subversion has a single remote, already tracked.",
+        "u": "Subversion has a single remote, already tracked.",
+        "all": "a working copy is on one branch at a time; only it can be pushed.",
+        "repo": "a working copy is bound to one repository URL.",
+    })
     if opts.has("delete", "d"):
         from .branching import delete_remote_ref
 
@@ -517,11 +574,24 @@ def cmd_pull(ctx, argv: List[str]) -> int:
         flags=["rebase", "r", "no-rebase", "ff-only", "quiet", "q", "verbose", "v", "all", "prune", "p"],
         values=["strategy", "s", "depth"],
     )
-    if opts.has("no-rebase"):
-        ctx.note(
-            "Subversion updates always replay your local changes on top of the "
-            "server's, so --no-rebase has no effect"
-        )
+    refuse("pull", opts, {
+        "strategy": "Subversion has one merge algorithm; there is no strategy to pick.",
+        "s": "Subversion has one merge algorithm; there is no strategy to pick.",
+    })
+    no_effect(ctx, "pull", opts, {
+        "no-rebase": "Subversion updates always replay your local changes on top "
+                     "of the server's.",
+        "rebase": "Subversion updates always replay your local changes on top "
+                  "of the server's; this is the only behaviour.",
+        "r": "Subversion updates always replay your local changes on top "
+             "of the server's; this is the only behaviour.",
+        "ff-only": "an update cannot be refused for being a real merge; there "
+                   "are no fast-forwards to insist on.",
+        "prune": "branches are directories, so nothing is cached locally to prune.",
+        "p": "branches are directories, so nothing is cached locally to prune.",
+        "depth": "a working copy holds no history to limit.",
+        "all": "a working copy is on one branch at a time.",
+    })
 
     before = ctx.info.revision
     args = ["update", str(ctx.wc_root), "--accept", "postpone"]
@@ -550,6 +620,14 @@ def cmd_pull(ctx, argv: List[str]) -> int:
 
 def cmd_fetch(ctx, argv: List[str]) -> int:
     opts = parse(argv, flags=["all", "prune", "p", "quiet", "q", "verbose", "v", "tags", "dry-run", "n"])
+    no_effect(ctx, "fetch", opts, {
+        "tags": "tags are directories on the server and are always current.",
+        "prune": "nothing is cached locally to prune.",
+        "p": "nothing is cached locally to prune.",
+        "all": "a working copy is on one branch at a time.",
+        "dry-run": "fetch only reports; it never changes the working copy.",
+        "n": "fetch only reports; it never changes the working copy.",
+    })
     root = str(ctx.wc_root)
     head = ctx.svn.info(root, revision="HEAD").revision
     base = ctx.info.revision

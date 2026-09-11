@@ -17,7 +17,7 @@ import fnmatch
 from typing import List, Optional
 
 from .. import formatting, layout as layout_mod, status as status_mod
-from ..cliargs import parse
+from ..cliargs import no_effect, parse, refuse
 from ..errors import SvnGitError, UsageError
 from ..layout import TRUNK_BRANCH_NAME
 from .. import revisions as rev_mod
@@ -56,6 +56,13 @@ def cmd_branch(ctx, argv: List[str]) -> int:
         values=["delete", "d", "D", "move", "m", "copy", "c"],
     )
     info, lay = ctx.info, ctx.layout
+    quiet = opts.has("quiet", "q")
+    # -a/--all is the default here: every Subversion branch lives on the
+    # server, so there is no local-only set to add.
+
+    copy = opts.first("copy", "c")
+    if copy:
+        return _copy_branch(ctx, str(copy), opts.positionals, quiet)
 
     delete = opts.first("delete", "d", "D")
     if delete:
@@ -68,7 +75,7 @@ def cmd_branch(ctx, argv: List[str]) -> int:
     if opts.positionals:
         name = opts.positionals[0]
         start_point = opts.positionals[1] if len(opts.positionals) > 1 else None
-        _create_branch(ctx, name, start_point)
+        _create_branch(ctx, name, start_point, quiet=quiet)
         return 0
 
     current = ctx.branch
@@ -87,7 +94,24 @@ def cmd_branch(ctx, argv: List[str]) -> int:
     return 0
 
 
-def _create_branch(ctx, name: str, start_point: Optional[str] = None) -> str:
+def _copy_branch(ctx, new_name: str, positionals: List[str], quiet: bool = False) -> int:
+    """`git branch -c`: another server-side copy, like creating one."""
+    info, lay = ctx.info, ctx.layout
+    source_name = positionals[0] if positionals else ctx.branch
+    source = layout_mod.branch_url(info, lay, source_name)
+    target = layout_mod.branch_url(info, lay, new_name)
+    if ctx.svn.path_exists(target):
+        raise SvnGitError("a branch named '%s' already exists" % new_name)
+    ctx.svn.run(
+        "copy", source, target, "-m", "Copy branch %s to %s" % (source_name, new_name),
+        mutating=True,
+    )
+    if not quiet:
+        ctx.echo("Copied branch %s to %s" % (source_name, new_name))
+    return 0
+
+
+def _create_branch(ctx, name: str, start_point: Optional[str] = None, quiet: bool = False) -> str:
     info, lay = ctx.info, ctx.layout
     target = layout_mod.branch_url(info, lay, name)
     if ctx.svn.path_exists(target):
@@ -101,10 +125,11 @@ def _create_branch(ctx, name: str, start_point: Optional[str] = None) -> str:
     else:
         source = info.url
 
-    ctx.note(
-        "creating a branch in Subversion is a server-side commit, so '%s' is "
-        "visible to everyone immediately" % name
-    )
+    if not quiet:
+        ctx.note(
+            "creating a branch in Subversion is a server-side commit, so '%s' is "
+            "visible to everyone immediately" % name
+        )
     ctx.svn.run(
         "copy", source, target, "-m", "Create branch %s" % name, mutating=True
     )
@@ -153,10 +178,24 @@ def delete_remote_ref(ctx, positionals: List[str]) -> int:
 def cmd_checkout(ctx, argv: List[str]) -> int:
     opts = parse(
         argv,
-        flags=["b", "B", "force", "f", "quiet", "q", "detach", "track", "t", "orphan", "merge"],
-        values=["start-point"],
+        flags=["b", "B", "force", "f", "quiet", "q", "detach", "track", "t", "orphan", "merge", "m"],
     )
+    refuse("checkout", opts, {
+        "orphan": "a branch with no history would be an empty directory; make "
+                  "one with `svn mkdir ^/branches/<name> -m ...` if you really "
+                  "want it.",
+    })
+    no_effect(ctx, "checkout", opts, {
+        "track": "Subversion has a single remote, so there is no upstream to set.",
+        "t": "Subversion has a single remote, so there is no upstream to set.",
+        "merge": "`svn switch` always merges your local changes; that is the only behaviour.",
+        "m": "`svn switch` always merges your local changes; that is the only behaviour.",
+    })
     positionals = list(opts.positionals)
+    quiet = opts.has("quiet", "q")
+
+    if opts.has("detach"):
+        return _detach(ctx, positionals, quiet)
 
     # `git checkout -- <paths>` and `git checkout <paths>` restore files.
     if opts.after_dashdash:
@@ -171,9 +210,10 @@ def cmd_checkout(ctx, argv: List[str]) -> int:
             raise UsageError("git checkout -b <new-branch> [<start-point>]")
         name = positionals[0]
         start_point = positionals[1] if len(positionals) > 1 else None
-        url = _create_branch(ctx, name, start_point)
+        url = _create_branch(ctx, name, start_point, quiet=quiet)
         ctx.svn.run("switch", url, str(ctx.wc_root), mutating=True, capture=False)
-        ctx.echo("Switched to a new branch '%s'" % name)
+        if not quiet:
+            ctx.echo("Switched to a new branch '%s'" % name)
         return 0
 
     if not positionals:
@@ -185,23 +225,45 @@ def cmd_checkout(ctx, argv: List[str]) -> int:
 
         return cmd_restore(ctx, positionals)
 
-    return _switch_to(ctx, name, force=opts.has("force", "f"))
+    return _switch_to(ctx, name, force=opts.has("force", "f"), quiet=quiet)
+
+
+def _detach(ctx, positionals: List[str], quiet: bool = False) -> int:
+    """`git checkout --detach <rev>`: sit at a revision rather than a branch.
+
+    The Subversion equivalent is an out-of-date working copy, which is exactly
+    what a detached HEAD is: no branch moves when you commit from here.
+    """
+    spec = positionals[0] if positionals else "HEAD"
+    revision = rev_mod.resolve(ctx, spec, str(ctx.wc_root))
+    ctx.svn.run("update", "-r", str(revision), str(ctx.wc_root), mutating=True, capture=False)
+    if not quiet:
+        ctx.echo("HEAD is now at %s" % formatting.revision_id(revision))
+        ctx.note(
+            "the working copy is now at an older revision; `git pull` returns "
+            "it to the tip of %s" % ctx.branch
+        )
+    return 0
 
 
 def cmd_switch(ctx, argv: List[str]) -> int:
     opts = parse(argv, flags=["create", "c", "force", "f", "quiet", "q", "detach"], values=["start-point"])
+    quiet = opts.has("quiet", "q")
+    if opts.has("detach"):
+        return _detach(ctx, opts.positionals, quiet)
     if not opts.positionals:
         raise UsageError("git switch <branch>")
     name = opts.positionals[0]
     if opts.has("create", "c"):
-        url = _create_branch(ctx, name, opts.first("start-point"))
+        url = _create_branch(ctx, name, opts.first("start-point"), quiet=quiet)
         ctx.svn.run("switch", url, str(ctx.wc_root), mutating=True, capture=False)
-        ctx.echo("Switched to a new branch '%s'" % name)
+        if not quiet:
+            ctx.echo("Switched to a new branch '%s'" % name)
         return 0
-    return _switch_to(ctx, name, force=opts.has("force", "f"))
+    return _switch_to(ctx, name, force=opts.has("force", "f"), quiet=quiet)
 
 
-def _switch_to(ctx, name: str, force: bool = False) -> int:
+def _switch_to(ctx, name: str, force: bool = False, quiet: bool = False) -> int:
     info, lay = ctx.info, ctx.layout
     _require_empty_queue(ctx, "switching branches")
 
@@ -222,7 +284,8 @@ def _switch_to(ctx, name: str, force: bool = False) -> int:
     ctx.svn.run("switch", url, str(ctx.wc_root), "--accept", "postpone", mutating=True, capture=False)
     ctx.state.clear_index()
     ctx.state.save()
-    ctx.echo("Switched to branch '%s'" % short)
+    if not quiet:
+        ctx.echo("Switched to branch '%s'" % short)
     return 0
 
 
@@ -236,9 +299,17 @@ def _looks_like_path(ctx, name: str) -> bool:
 def cmd_merge(ctx, argv: List[str]) -> int:
     opts = parse(
         argv,
-        flags=["no-commit", "n", "abort", "squash", "ff", "no-ff", "quiet", "q", "reintegrate"],
+        flags=["no-commit", "n", "abort", "squash", "ff", "no-ff", "quiet", "q"],
         values=["message", "m", "strategy", "s"],
     )
+    refuse("merge", opts, {
+        "strategy": "Subversion has one merge algorithm; there is no strategy to pick.",
+        "s": "Subversion has one merge algorithm; there is no strategy to pick.",
+    })
+    no_effect(ctx, "merge", opts, {
+        "ff": "every Subversion merge is a real merge; there is no fast-forward.",
+        "no-ff": "every Subversion merge is a real merge; there is no fast-forward.",
+    })
     if opts.has("abort"):
         ctx.svn.run("revert", "-R", str(ctx.wc_root), mutating=True)
         ctx.echo("Merge aborted; working copy reverted.")
@@ -267,14 +338,24 @@ def cmd_merge(ctx, argv: List[str]) -> int:
         return 1
 
     message = str(opts.first("message", "m", default="Merge branch '%s'" % short))
+
+    if opts.has("squash"):
+        # git --squash takes the changes without recording a merge. svn records
+        # the merge in svn:mergeinfo on the root, so reverting just that
+        # property leaves the file changes behind as ordinary local edits.
+        ctx.svn.run("revert", "--depth", "empty", str(ctx.wc_root), mutating=True)
+        ctx.echo("Squash commit -- not updating HEAD")
+        ctx.echo("Automatic merge went well; stopped before committing as requested")
+        return 0
+
     if opts.has("no-commit", "n"):
         ctx.echo("Automatic merge went well; stopped before committing as requested")
         return 0
 
-    return _commit_merge(ctx, message)
+    return _commit_merge(ctx, message, quiet=opts.has("quiet", "q"))
 
 
-def _commit_merge(ctx, message: str) -> int:
+def _commit_merge(ctx, message: str, quiet: bool = False) -> int:
     """Commit a merge straight to Subversion, root included.
 
     The root has to be in the commit: `svn merge` records svn:mergeinfo there,
@@ -287,6 +368,8 @@ def _commit_merge(ctx, message: str) -> int:
     _refresh_base_revision(ctx)
     ctx.state.clear_index()
     ctx.state.save()
+    if quiet:
+        return 0
     if revision:
         ctx.echo("Committed as %s" % formatting.revision_id(revision))
     elif result.stdout.strip():
@@ -299,6 +382,12 @@ def _commit_merge(ctx, message: str) -> int:
 # ----------------------------------------------------------------------
 def cmd_cherry_pick(ctx, argv: List[str]) -> int:
     opts = parse(argv, flags=["no-commit", "n", "abort", "continue", "x", "quiet", "q"], values=["mainline", "m"])
+    refuse("cherry-pick", opts, {
+        "continue": "there is no cherry-pick in progress to resume. Resolve the "
+                    "conflicts, `git add` them, then `git commit`.",
+        "mainline": "Subversion revisions have no second parent to pick a side from.",
+        "m": "Subversion revisions have no second parent to pick a side from.",
+    })
     if opts.has("abort"):
         ctx.svn.run("revert", "-R", str(ctx.wc_root), mutating=True)
         ctx.echo("cherry-pick aborted.")
@@ -319,7 +408,8 @@ def cmd_cherry_pick(ctx, argv: List[str]) -> int:
         return 1
 
     if opts.has("no-commit", "n"):
-        ctx.echo("Applied %s to the working copy." % formatting.revision_id(revision))
+        if not opts.has("quiet", "q"):
+            ctx.echo("Applied %s to the working copy." % formatting.revision_id(revision))
         return 0
 
     entries = ctx.svn.log(source, revision=str(revision))
@@ -327,7 +417,7 @@ def cmd_cherry_pick(ctx, argv: List[str]) -> int:
     message = original or "Cherry-pick %s" % formatting.revision_id(revision)
     if opts.has("x"):
         message += "\n\n(cherry picked from %s)" % formatting.revision_id(revision)
-    return _commit_merge(ctx, message)
+    return _commit_merge(ctx, message, quiet=opts.has("quiet", "q"))
 
 
 def cmd_revert(ctx, argv: List[str]) -> int:
@@ -336,6 +426,7 @@ def cmd_revert(ctx, argv: List[str]) -> int:
     Note this is *not* `svn revert`, which throws away local edits; that is
     `git restore` / `git checkout --`.
     """
+    # --no-edit is the default: svngit never opens an editor for a revert.
     opts = parse(argv, flags=["no-commit", "n", "no-edit", "abort", "quiet", "q"], values=["message", "m"])
     if opts.has("abort"):
         ctx.svn.run("revert", "-R", str(ctx.wc_root), mutating=True)
@@ -361,7 +452,7 @@ def cmd_revert(ctx, argv: List[str]) -> int:
     message = str(
         opts.first("message", "m", default='Revert "%s"\n\nThis reverts %s.' % (subject, formatting.revision_id(revision)))
     )
-    return _commit_merge(ctx, message)
+    return _commit_merge(ctx, message, quiet=opts.has("quiet", "q"))
 
 
 def _source_url_for_revision(ctx, revision: int) -> str:
@@ -382,12 +473,34 @@ def _source_url_for_revision(ctx, revision: int) -> str:
 # ----------------------------------------------------------------------
 # tag
 # ----------------------------------------------------------------------
+def _tag_contains(ctx, info, lay, name: str, revision: int) -> bool:
+    """Whether a tag was cut from a revision at or after `revision`.
+
+    A Subversion tag is a directory copy, so the revision it was copied from
+    is what its history includes.
+    """
+    url = layout_mod.tag_url(info, lay, name)
+    entries = ctx.svn.log(url, limit=1, stop_on_copy=True, verbose=True)
+    if not entries:
+        return False
+    for path in entries[0].paths:
+        if path.copyfrom_rev is not None:
+            return path.copyfrom_rev >= revision
+    return entries[0].revision >= revision
+
+
 def cmd_tag(ctx, argv: List[str]) -> int:
     opts = parse(
         argv,
         flags=["annotate", "a", "list", "l", "force", "f", "sign", "s", "n"],
         values=["message", "m", "delete", "d", "contains"],
     )
+    refuse("tag", opts, {
+        "sign": "Subversion has no signed tags; a tag is a directory copy.",
+        "s": "Subversion has no signed tags; a tag is a directory copy.",
+    })
+    # -a/--annotate is the default: every Subversion tag is a copy made with a
+    # log message, so there is no lightweight form to contrast it with.
     info, lay = ctx.info, ctx.layout
 
     delete = opts.first("delete", "d")
@@ -399,11 +512,17 @@ def cmd_tag(ctx, argv: List[str]) -> int:
         ctx.echo("Deleted tag '%s'" % delete)
         return 0
 
-    if not opts.positionals or opts.has("list", "l"):
+    if not opts.positionals or opts.has("list", "l") or opts.has("contains"):
         pattern = opts.positionals[0] if opts.positionals else None
+        floor = None
+        if opts.has("contains"):
+            floor = rev_mod.resolve(ctx, str(opts.get("contains")), str(ctx.wc_root))
         for name in layout_mod.list_tags(ctx.svn, info, lay):
-            if pattern is None or fnmatch.fnmatch(name, pattern):
-                ctx.echo(name)
+            if pattern is not None and not fnmatch.fnmatch(name, pattern):
+                continue
+            if floor is not None and not _tag_contains(ctx, info, lay, name, floor):
+                continue
+            ctx.echo(name)
         return 0
 
     name = opts.positionals[0]

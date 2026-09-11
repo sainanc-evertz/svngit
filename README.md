@@ -195,6 +195,14 @@ Commands with no honest translation say so and point at the nearest thing —
 `rebase`, `bisect`, `reflog`, `submodule`, `worktree`, `gc`, `am`, and
 `notes`.
 
+Individual options get the same treatment. Anything svngit cannot honour is
+refused with the reason (`git merge --strategy`, `git clone --bare`,
+`git tag --sign`); anything that is accepted but changes nothing here says so
+on stderr (`git push --tags`, `git pull --ff-only`). A test walks every
+option the parser declares and fails the build on any that is silently
+ignored, because an option that quietly does nothing is worse than one that
+is rejected — you asked for something and believed you got it.
+
 The full command-by-command mapping is in [docs/COMMANDS.md](docs/COMMANDS.md).
 
 ## Configuration

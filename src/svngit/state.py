@@ -55,6 +55,9 @@ class IndexEntry:
     action: str
     blob: Optional[str] = None
     executable: bool = False
+    #: Set by `git add -N`: the path is recorded with empty content so that
+    #: `git add -p` can pick hunks out of it, but it is not ready to commit.
+    intent: bool = False
 
 
 @dataclass
@@ -189,9 +192,9 @@ class State:
         }
 
     def stage(self, path: str, action: str, blob: Optional[str] = None,
-              executable: bool = False) -> None:
+              executable: bool = False, intent: bool = False) -> None:
         self._data["index"][path] = asdict(
-            IndexEntry(action=action, blob=blob, executable=executable)
+            IndexEntry(action=action, blob=blob, executable=executable, intent=intent)
         )
 
     def unstage(self, path: str) -> bool:

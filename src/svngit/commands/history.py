@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import List, Optional, Tuple
 
 from .. import formatting, revisions as rev_mod, status as status_mod
-from ..cliargs import parse, split_revisions_and_paths
+from ..cliargs import no_effect, parse, refuse, split_revisions_and_paths
 from ..errors import UsageError
 from ..state import ADD, DELETE
 from ..svnclient import parse_svn_date
@@ -24,10 +24,22 @@ def cmd_log(ctx, argv: List[str]) -> int:
     revisions, paths = split_revisions_and_paths(ctx, opts.positionals)
     paths.extend(opts.after_dashdash)
 
-    if opts.has("graph"):
-        ctx.note("Subversion history is linear, so --graph has nothing to draw")
+    no_effect(ctx, "log", opts, {
+        "graph": "Subversion history is linear, so there is nothing to draw.",
+        "decorate": "branch and tag names are directories, not refs, so revisions "
+                    "carry no decoration.",
+        "no-merges": "plain `svn log` does not mark which revisions were merges, "
+                     "so they cannot be filtered out.",
+    })
 
-    target = ctx.svn_target(ctx.to_wc_path(paths[0])) if paths else str(ctx.wc_root)
+    if paths:
+        target = ctx.svn_target(ctx.to_wc_path(paths[0]))
+    elif opts.has("all"):
+        # Every branch at once is the repository root, since branches are
+        # directories under it.
+        target = ctx.info.repos_root
+    else:
+        target = str(ctx.wc_root)
 
     revision_arg = _log_range(ctx, revisions, target, opts)
     limit = opts.first("max-count", "n")
@@ -120,18 +132,29 @@ def cmd_diff(ctx, argv: List[str]) -> int:
         flags=["cached", "staged", "stat", "name-only", "name-status", "numstat", "shortstat", "no-color", "color", "text", "binary"],
         values=["unified", "U", "diff-filter"],
     )
+    no_effect(ctx, "diff", opts, {
+        "color": "svngit does not colourise its output.",
+        "binary": "Subversion diffs cannot carry binary content.",
+        "text": "binary files are reported as differing, never inlined.",
+        "diff-filter": "the diff is not filtered by change type.",
+    })
+    context = opts.first("unified", "U")
+
     revisions, paths = split_revisions_and_paths(ctx, opts.positionals)
     paths.extend(opts.after_dashdash)
     wc_paths = ctx.to_wc_paths(paths) if paths else None
     targets = [ctx.svn_target(p) for p in wc_paths] if wc_paths else [str(ctx.wc_root)]
+    extra = ["-x", "-U%s" % context] if context else []
 
     if revisions:
         spec = revisions[0] if len(revisions) == 1 else "%s..%s" % (revisions[0], revisions[1])
         if spec.upper() in ("HEAD", "@") and not rev_mod.is_range(spec):
-            diff_text = ctx.svn.run("diff", *targets, check=False).stdout
+            diff_text = ctx.svn.run("diff", *extra, *targets, check=False).stdout
         else:
             revision_arg = rev_mod.to_svn_range(ctx, spec, targets[0])
-            diff_text = ctx.svn.run("diff", "-r", revision_arg, *targets, check=False).stdout
+            diff_text = ctx.svn.run(
+                "diff", "-r", revision_arg, *extra, *targets, check=False
+            ).stdout
         return _emit_diff(ctx, diff_text, opts)
 
     if opts.has("cached", "staged"):
@@ -264,14 +287,36 @@ def _status_letter(body: str) -> str:
 # ----------------------------------------------------------------------
 # blame
 # ----------------------------------------------------------------------
+def _line_range(spec) -> Tuple[int, Optional[int]]:
+    """Parse git's `-L <start>,<end>`. Either end may be omitted."""
+    if not spec:
+        return 1, None
+    text = str(spec)
+    start, _, end = text.partition(",")
+    try:
+        first = int(start) if start.strip() else 1
+        last = int(end) if end.strip() else None
+    except ValueError:
+        raise UsageError("git blame -L takes <start>[,<end>] line numbers, got %r" % text)
+    return max(first, 1), last
+
+
 def cmd_blame(ctx, argv: List[str]) -> int:
     opts = parse(argv, flags=["line-porcelain", "porcelain", "s", "w"], values=["L", "revision", "r"])
+    refuse("blame", opts, {
+        "porcelain": "svngit has no git object ids to emit; use `svn blame --xml` "
+                     "for a machine-readable form.",
+        "line-porcelain": "svngit has no git object ids to emit; use "
+                          "`svn blame --xml` for a machine-readable form.",
+    })
     if not opts.paths:
         raise UsageError("git blame <file>")
 
     wc_path = ctx.to_wc_path(opts.paths[0])
     target = ctx.svn_target(wc_path)
     args = ["blame", target]
+    if opts.has("w"):
+        args.extend(["-x", "-w"])
     revision = opts.first("revision", "r")
     if revision:
         args.extend(["-r", str(rev_mod.resolve(ctx, str(revision), target))])
@@ -279,12 +324,16 @@ def cmd_blame(ctx, argv: List[str]) -> int:
     if root is None:
         return 1
 
+    first_line, last_line = _line_range(opts.first("L"))
+
     text = ctx.svn.run("cat", target, check=False).stdout.splitlines()
     entries = list(root.iter("entry"))
     width = len(str(len(entries)))
 
     for entry in entries:
         number = int(entry.get("line-number") or 0)
+        if number < first_line or (last_line is not None and number > last_line):
+            continue
         commit = entry.find("commit")
         if commit is None:
             revision_id, author, date = "00000000", "Not Committed Yet", ""

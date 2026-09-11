@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Dict, Iterable, List, Sequence, Tuple
 
-from .errors import UsageError
+from .errors import Unsupported, UsageError
 
 
 class Options:
@@ -155,3 +155,27 @@ def split_revisions_and_paths(ctx, items: Sequence[str]) -> Tuple[List[str], Lis
         else:
             revisions.append(item)
     return revisions, paths
+
+
+# ----------------------------------------------------------------------
+# options that cannot be honoured
+# ----------------------------------------------------------------------
+def refuse(command: str, opts: Options, reasons: dict) -> None:
+    """Raise for any option present that svngit cannot honour.
+
+    Accepting an option and then ignoring it is the worst outcome: the user
+    believes they asked for something. Anything that cannot be done is
+    refused here, with the reason and the nearest alternative.
+    """
+    for name, reason in reasons.items():
+        if opts.has(name):
+            dash = "-" if len(name) == 1 else "--"
+            raise Unsupported("git %s %s%s: %s" % (command, dash, name, reason))
+
+
+def no_effect(ctx, command: str, opts: Options, reasons: dict) -> None:
+    """Report any option that is accepted but changes nothing here."""
+    for name, reason in reasons.items():
+        if opts.has(name):
+            dash = "-" if len(name) == 1 else "--"
+            ctx.note("git %s %s%s: %s" % (command, dash, name, reason))

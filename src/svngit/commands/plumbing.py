@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import List
 
 from .. import formatting
-from ..cliargs import parse
+from ..cliargs import parse, refuse
 from ..errors import SvnGitError, UsageError
 from .. import revisions as rev_mod
 
@@ -19,13 +19,33 @@ def cmd_config(ctx, argv: List[str]) -> int:
         flags=["list", "l", "global", "local", "system", "get", "bool", "int"],
         values=["unset", "add", "get-regexp"],
     )
+    refuse("config", opts, {
+        "add": "svngit config keys hold a single value, so there is nothing to "
+               "append to. Set the key instead.",
+    })
     if opts.has("global") or opts.has("system"):
         ctx.note("svngit config is stored per working copy; --global is ignored")
+    # --local is the only scope there is, so it needs no handling.
 
     if opts.has("list", "l"):
         for key, value in sorted(ctx.state.config.items()):
             ctx.echo("%s=%s" % (key, value))
         return 0
+
+    pattern = opts.first("get-regexp")
+    if pattern:
+        import re
+
+        try:
+            matcher = re.compile(str(pattern))
+        except re.error as exc:
+            raise UsageError("invalid regexp %s: %s" % (pattern, exc))
+        found = False
+        for key, value in sorted(ctx.state.config.items()):
+            if matcher.search(key):
+                ctx.echo("%s %s" % (key, value))
+                found = True
+        return 0 if found else 1
 
     unset = opts.first("unset")
     if unset:
@@ -38,16 +58,28 @@ def cmd_config(ctx, argv: List[str]) -> int:
         raise UsageError("git config <key> [<value>]")
 
     key = opts.positionals[0]
-    if len(opts.positionals) == 1:
+    if len(opts.positionals) == 1 or opts.has("get"):
         value = ctx.state.get_config(key)
         if value is None:
             return 1
-        ctx.echo(str(value))
+        ctx.echo(_typed(str(value), opts))
         return 0
 
     ctx.state.set_config(key, opts.positionals[1])
     ctx.state.save()
     return 0
+
+
+def _typed(value: str, opts) -> str:
+    """Apply git's --bool / --int canonicalisation to a config value."""
+    if opts.has("bool"):
+        return "true" if value.strip().lower() in ("true", "yes", "on", "1", "") else "false"
+    if opts.has("int"):
+        try:
+            return str(int(value.strip()))
+        except ValueError:
+            raise UsageError("bad numeric config value %r" % value)
+    return value
 
 
 # ----------------------------------------------------------------------
@@ -95,6 +127,8 @@ def cmd_rev_parse(ctx, argv: List[str]) -> int:
         ],
     )
     handled = False
+    # --short has nothing to shorten: a revision number is already its own
+    # shortest form.
 
     if opts.has("is-inside-work-tree"):
         ctx.echo("true" if ctx.in_working_copy() else "false")
@@ -112,7 +146,17 @@ def cmd_rev_parse(ctx, argv: List[str]) -> int:
         if opts.has("abbrev-ref", "symbolic-full-name"):
             ctx.echo(ctx.branch if spec.upper() in ("HEAD", "@") else spec)
         else:
-            ctx.echo(formatting.revision_id(rev_mod.resolve(ctx, spec, str(ctx.wc_root))))
+            try:
+                revision = rev_mod.resolve(ctx, spec, str(ctx.wc_root))
+            except (UsageError, SvnGitError):
+                # --verify reports a bad revision by exit code; -q also
+                # silences the message, as git does.
+                if opts.has("verify"):
+                    if not opts.has("quiet", "q"):
+                        ctx.warn("fatal: Needed a single revision")
+                    return 1
+                raise
+            ctx.echo(formatting.revision_id(revision))
         handled = True
 
     if not handled:
@@ -125,6 +169,11 @@ def cmd_rev_parse(ctx, argv: List[str]) -> int:
 # ----------------------------------------------------------------------
 def cmd_ls_files(ctx, argv: List[str]) -> int:
     opts = parse(argv, flags=["cached", "c", "modified", "m", "others", "o", "deleted", "d", "stage", "s"])
+    refuse("ls-files", opts, {
+        "stage": "there are no git object ids or stage numbers to print.",
+        "s": "there are no git object ids or stage numbers to print.",
+    })
+    # -c/--cached is the default listing.
     from .. import status as status_mod
 
     if opts.has("modified", "m") or opts.has("others", "o") or opts.has("deleted", "d"):

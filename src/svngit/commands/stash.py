@@ -101,7 +101,18 @@ def _push(ctx, argv: List[str]) -> int:
             absolute.unlink()
 
     ctx.state.push_stash(entry)
-    ctx.state.clear_index()
+    if opts.has("keep-index", "k"):
+        # git leaves the staged content in the working copy; only the unstaged
+        # changes go away. The index itself is untouched.
+        for path, values in index_snapshot.items():
+            blob = values.get("blob")
+            if blob is None:
+                continue
+            absolute = ctx.abs_path(path)
+            absolute.parent.mkdir(parents=True, exist_ok=True)
+            absolute.write_bytes(ctx.state.objects.read(blob))
+    else:
+        ctx.state.clear_index()
     ctx.state.save()
     if not opts.has("quiet", "q"):
         ctx.echo("Saved working directory and index state %s" % entry.message)
