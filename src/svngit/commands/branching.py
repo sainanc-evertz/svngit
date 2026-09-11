@@ -23,6 +23,18 @@ from ..layout import TRUNK_BRANCH_NAME
 from .. import revisions as rev_mod
 
 
+def _after_server_commit(ctx) -> None:
+    """Catch the working copy up after a server-side copy, move or delete.
+
+    Creating a branch or a tag is a commit, so the repository moves on while
+    the working copy does not. Left alone, the stale BASE makes the very next
+    `git push` look like the server has work you do not have.
+    """
+    from .sync import _refresh_base_revision
+
+    _refresh_base_revision(ctx)
+
+
 def _require_empty_queue(ctx, verb: str) -> None:
     pending = ctx.state.commits
     if pending:
@@ -53,7 +65,7 @@ def cmd_branch(ctx, argv: List[str]) -> int:
     opts = parse(
         argv,
         flags=["all", "a", "remotes", "r", "list", "l", "verbose", "v", "force", "f", "quiet", "q"],
-        values=["delete", "d", "D", "move", "m", "copy", "c"],
+        values=["delete", "d", "D", "move", "m", "copy", "c", "merged", "no-merged"],
     )
     info, lay = ctx.info, ctx.layout
     quiet = opts.has("quiet", "q")
@@ -80,6 +92,16 @@ def cmd_branch(ctx, argv: List[str]) -> int:
 
     current = ctx.branch
     names = layout_mod.list_branches(ctx.svn, info, lay)
+
+    if opts.has("merged") or opts.has("no-merged"):
+        into = str(opts.first("merged", "no-merged") or "")
+        want_merged = opts.has("merged")
+        names = [
+            name for name in names
+            if name != current
+            and _is_merged(ctx, info, lay, name, into) is want_merged
+        ]
+
     for name in names:
         marker = "*" if name == current else " "
         label = name if not opts.has("remotes", "r") else "origin/" + name
@@ -94,6 +116,22 @@ def cmd_branch(ctx, argv: List[str]) -> int:
     return 0
 
 
+def _is_merged(ctx, info, lay, name: str, into: str = "") -> bool:
+    """Whether every revision on `name` is already merged into `into`.
+
+    Subversion answers this directly: `svn mergeinfo --show-revs eligible`
+    lists what has not been merged yet, so an empty answer means merged.
+    """
+    source = layout_mod.branch_url(info, lay, name)
+    target = layout_mod.branch_url(info, lay, into) if into else str(ctx.wc_root)
+    result = ctx.svn.run(
+        "mergeinfo", "--show-revs", "eligible", source, target, check=False
+    )
+    if not result.ok:
+        return False
+    return not result.stdout.strip()
+
+
 def _copy_branch(ctx, new_name: str, positionals: List[str], quiet: bool = False) -> int:
     """`git branch -c`: another server-side copy, like creating one."""
     info, lay = ctx.info, ctx.layout
@@ -106,6 +144,7 @@ def _copy_branch(ctx, new_name: str, positionals: List[str], quiet: bool = False
         "copy", source, target, "-m", "Copy branch %s to %s" % (source_name, new_name),
         mutating=True,
     )
+    _after_server_commit(ctx)
     if not quiet:
         ctx.echo("Copied branch %s to %s" % (source_name, new_name))
     return 0
@@ -133,6 +172,7 @@ def _create_branch(ctx, name: str, start_point: Optional[str] = None, quiet: boo
     ctx.svn.run(
         "copy", source, target, "-m", "Create branch %s" % name, mutating=True
     )
+    _after_server_commit(ctx)
     return target
 
 
@@ -144,6 +184,7 @@ def _delete_branch(ctx, name: str, force: bool = False) -> int:
     if not ctx.svn.path_exists(url):
         raise SvnGitError("branch '%s' not found" % name)
     ctx.svn.run("delete", url, "-m", "Delete branch %s" % name, mutating=True)
+    _after_server_commit(ctx)
     ctx.echo("Deleted branch %s (was %s)." % (name, url))
     return 0
 
@@ -156,6 +197,7 @@ def _rename_branch(ctx, new_name: str, positionals: List[str]) -> int:
     source = layout_mod.branch_url(info, lay, old_name)
     target = layout_mod.branch_url(info, lay, new_name)
     ctx.svn.run("move", source, target, "-m", "Rename branch %s to %s" % (old_name, new_name), mutating=True)
+    _after_server_commit(ctx)
     if old_name == ctx.branch:
         ctx.svn.run("switch", target, str(ctx.wc_root), mutating=True)
     ctx.echo("Renamed branch %s to %s" % (old_name, new_name))
@@ -509,6 +551,7 @@ def cmd_tag(ctx, argv: List[str]) -> int:
         if not ctx.svn.path_exists(url):
             raise SvnGitError("tag '%s' not found" % delete)
         ctx.svn.run("delete", url, "-m", "Delete tag %s" % delete, mutating=True)
+        _after_server_commit(ctx)
         ctx.echo("Deleted tag '%s'" % delete)
         return 0
 
@@ -538,5 +581,6 @@ def cmd_tag(ctx, argv: List[str]) -> int:
     message = str(opts.first("message", "m", default="Create tag %s" % name))
     args = ["copy", source, url, "-m", message]
     ctx.svn.run(*args, mutating=True)
+    _after_server_commit(ctx)
     ctx.note("tags in Subversion are directories, so '%s' is now on the server" % name)
     return 0

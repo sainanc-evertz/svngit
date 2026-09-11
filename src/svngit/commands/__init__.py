@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Callable, Dict, NamedTuple, Optional
 
-from . import branching, history, plumbing, stash, sync, workspace
+from . import branching, history, patches, plumbing, search, stash, sync, tools, workspace
 
 
 class Command(NamedTuple):
@@ -33,6 +33,16 @@ REGISTRY: Dict[str, Command] = {
     "show": Command(history.cmd_show),
     "diff": Command(history.cmd_diff),
     "blame": Command(history.cmd_blame),
+    "shortlog": Command(history.cmd_shortlog),
+    "describe": Command(history.cmd_describe),
+    "whatchanged": Command(history.cmd_whatchanged),
+    "grep": Command(search.cmd_grep),
+    "check-ignore": Command(search.cmd_check_ignore),
+    "apply": Command(patches.cmd_apply),
+    "format-patch": Command(patches.cmd_format_patch),
+    "archive": Command(patches.cmd_archive),
+    "difftool": Command(tools.cmd_difftool),
+    "mergetool": Command(tools.cmd_mergetool),
     # sharing
     "commit": Command(sync.cmd_commit),
     "push": Command(sync.cmd_push),
@@ -47,6 +57,7 @@ REGISTRY: Dict[str, Command] = {
     "revert": Command(branching.cmd_revert),
     "tag": Command(branching.cmd_tag),
     "stash": Command(stash.cmd_stash),
+    "sparse-checkout": Command(workspace.cmd_sparse_checkout),
     # plumbing
     "config": Command(plumbing.cmd_config),
     "remote": Command(plumbing.cmd_remote),
@@ -96,8 +107,43 @@ NO_EQUIVALENT = {
         "been. `git log` shows the repository's history instead."
     ),
     "gc": "Subversion working copies need no garbage collection.",
-    "am": "there is no patch queue; apply patches with `svn patch`.",
+    "am": (
+        "there is no patch queue to replay onto. Apply a single patch with "
+        "`git apply <file>`, then commit it."
+    ),
     "notes": "Subversion has no commit notes.",
+    "bundle": (
+        "there is no pack format to hand around. To move history offline, use "
+        "`svnadmin dump` on the server and `svnadmin load` at the far end; for "
+        "a single change, `git format-patch` and `git apply`."
+    ),
+    "range-diff": (
+        "comparing two versions of a patch series needs rewritable history. "
+        "Compare two revisions directly with `git diff rA..rB`."
+    ),
+    "rerere": (
+        "Subversion records no conflict resolutions to reuse. `svn resolve` "
+        "handles one conflict at a time; see `git mergetool`."
+    ),
+    "filter-branch": "Subversion history cannot be rewritten in place.",
+    "fast-export": (
+        "to move a repository elsewhere, dump it with `svnadmin dump`, or use "
+        "`git svn clone` to convert it to git."
+    ),
+    "fast-import": "to load history into Subversion, use `svnadmin load`.",
+    "maintenance": "a Subversion working copy needs no scheduled upkeep.",
+    "scalar": "Subversion has no equivalent large-repository tooling.",
+    "backfill": "a working copy holds no partial history to backfill.",
+    "count-objects": "there is no local object store to measure.",
+    "fsck": (
+        "a working copy stores no object graph to verify. The server side is "
+        "`svnadmin verify`."
+    ),
+    "replace": "Subversion has no object graph in which to substitute a commit.",
+    "gitk": "svngit ships no GUI; `git log` and `git show` are the views it has.",
+    "gui": "svngit ships no GUI; try TortoiseSVN or RabbitVCS.",
+    "citool": "svngit ships no GUI; use `git commit`.",
+    "instaweb": "svngit ships no web interface; ViewVC serves Subversion.",
 }
 
 
@@ -121,6 +167,17 @@ DEFAULT_BEHAVIOUR = {
     ("cmd_ls_files", "cached"): "listing the tracked files is the default",
     ("cmd_status", "long"): "the long format is the default",
     ("cmd_reset", "mixed"): "--mixed is the default reset mode",
+    ("cmd_grep", "E"): "Python's regex dialect is a superset of POSIX extended",
+    ("cmd_grep", "extended-regexp"): "Python's regex dialect is a superset of POSIX extended",
+    ("cmd_grep", "G"): "Python's regex dialect is a superset of POSIX basic",
+    ("cmd_grep", "basic-regexp"): "Python's regex dialect is a superset of POSIX basic",
+    ("cmd_describe", "tags"): "Subversion tags are the only thing svngit can describe from",
+    ("cmd_format_patch", "numbered"): "output files are always numbered",
+    ("cmd_format_patch", "n"): "-n is --numbered, which is already the only behaviour",
+    ("cmd_difftool", "prompt"): "prompting is the default; --no-prompt turns it off",
+    ("cmd_mergetool", "prompt"): "prompting is the default; --no-prompt turns it off",
+    ("_sparse_init", "cone"): "Subversion excludes directories, so cone mode is the only one",
+    ("_sparse_apply", "cone"): "Subversion excludes directories, so cone mode is the only one",
 }
 
 

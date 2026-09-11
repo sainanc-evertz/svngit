@@ -62,12 +62,15 @@ def parse(
     flags: Iterable[str] = (),
     values: Iterable[str] = (),
     allow_numeric: bool = False,
+    numeric_key: str = "n",
 ) -> Options:
     """Split argv into options and positionals.
 
     `flags` and `values` are option names without dashes; single characters
     are short options, longer names are long options. `allow_numeric` accepts
-    git's bare `-5` shorthand for "limit to 5" and stores it under "n".
+    git's bare `-5` shorthand for "limit to 5", stored under `numeric_key` --
+    which has to move where `-n` already means something else, as it does for
+    `format-patch`, where `-n` is --numbered.
     """
     flag_set = set(flags)
     value_set = set(values)
@@ -116,7 +119,7 @@ def parse(
 
         if arg.startswith("-") and arg != "-":
             if allow_numeric and arg[1:].isdigit():
-                parsed["n"] = arg[1:]
+                parsed[numeric_key] = arg[1:]
                 continue
             cursor = 1
             while cursor < len(arg):

@@ -53,7 +53,21 @@ always absolute, so behaviour does not depend on which subdirectory you are in.
 | `git diff HEAD` | `svn diff` | |
 | `git diff <a>..<b>` | `svn diff -r A:B` | |
 | `git diff --stat` / `--numstat` / `--name-only` / `--name-status` | as above, summarised | |
-| `git blame <file>` | `svn blame --xml` | Reformatted with revision, author and date per line. |
+| `git blame <file>` | `svn blame --xml` | Reformatted with revision, author and date per line. `-L` limits the range, `-w` ignores whitespace. |
+| `git log -S` / `-G` | `svn diff` per revision | `svn log --search` matches messages only, so the pickaxe reads each revision's diff. Narrow the range first. |
+| `git shortlog` | `svn log --xml` | Grouped by author. `-s` counts only, `-n` sorts by count. |
+| `git describe` | `svn log` on `^/tags` | Names a revision after the newest tag copied at or before it: `v1.0-3-r412`. |
+| `git whatchanged` | `svn log -v` | git's older spelling of `log --raw`. |
+| `git grep <pattern>` | *no svn call* | Searches versioned files, skipping `.svn` and anything unversioned or ignored. `--untracked` widens it. |
+| `git check-ignore <path>` | `svn propget svn:ignore` | Reads the patterns, so a path that does not exist yet can still be checked. |
+
+## Patches and archives
+
+| git | svn | Notes |
+| --- | --- | --- |
+| `git apply <patch>` | *no svn call* | svngit's own applier, so stale hunk headers and svn-style `Index:` headers both work. All-or-nothing: a patch that fails changes nothing. `--check`, `-R`, `--stat`, `-p<n>`. |
+| `git format-patch <range>` | `svn log` + `svn diff -c N` | One mbox-format file per revision, with git-style headers so `git apply` elsewhere accepts them. `--stdout`, `-o`, `-<n>`. |
+| `git archive -o <file> <rev>` | `svn export` | tar, tar.gz or zip, chosen by `--format` or the file extension. `--prefix` nests the contents. |
 
 ## Sharing
 
@@ -79,6 +93,8 @@ always absolute, so behaviour does not depend on which subdirectory you are in.
 | `git branch <name>` | `svn copy ^/<current> ^/branches/<name> -m` | A server-side commit; visible to everyone at once. |
 | `git branch -d <name>` | `svn delete ^/branches/<name> -m` | |
 | `git branch -m <new>` | `svn move` (+ `svn switch` if current) | |
+| `git branch -c <new>` | `svn copy` | |
+| `git branch --merged` / `--no-merged` | `svn mergeinfo --show-revs eligible` | A branch with nothing eligible is fully merged. |
 | `git checkout <name>` | `svn switch ^/branches/<name>` | |
 | `git checkout -b <name>` | `svn copy` then `svn switch` | |
 | `git checkout -- <paths>` | `svn revert -R <paths>` | |
@@ -105,6 +121,16 @@ files, all kept in the local object store. The server is never involved.
 | `git stash list` | Newest first, as `stash@{0}` |
 | `git stash pop` / `apply` | `svn patch`, plus restoring untracked files and the index |
 | `git stash show` / `drop` / `clear` | |
+| `git stash branch <name>` | `git checkout -b` then pop | For a stash that no longer applies where you are. |
+
+## Sparse checkouts and tools
+
+| git | svn | Notes |
+| --- | --- | --- |
+| `git sparse-checkout set <paths>` | `svn update --set-depth` | Excludes every other top-level directory and restores the named ones at full depth. Cone mode only, since Subversion excludes directories rather than matching patterns. |
+| `git sparse-checkout list` / `add` / `init` / `disable` | | |
+| `git difftool` | `svn diff --diff-cmd` | Tool from `--tool` or `diff.tool`, else the first of difft, delta, colordiff, diff. |
+| `git mergetool` | conflict files + `svn resolve` | Hands the tool svn's `.mine` / `.rOLD` / `.rNEW` files, then records the result with `svn resolve --accept working`. |
 
 ## Plumbing
 
@@ -141,5 +167,7 @@ files, all kept in the local object store. The server is never involved.
 ## No equivalent
 
 These report what is missing and what to reach for instead: `rebase`,
-`bisect`, `submodule`, `worktree`, `reflog`, `gc`, `am`, `notes`,
-`git clean -i`.
+`bisect`, `submodule`, `worktree`, `reflog`, `gc`, `am`, `notes`, `bundle`,
+`range-diff`, `rerere`, `filter-branch`, `fast-export`, `fast-import`,
+`maintenance`, `scalar`, `backfill`, `count-objects`, `fsck`, `replace`,
+`gitk`, `gui`, `citool`, `instaweb`, and `git clean -i`.

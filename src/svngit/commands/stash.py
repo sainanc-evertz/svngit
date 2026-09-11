@@ -32,6 +32,7 @@ def cmd_stash(ctx, argv: List[str]) -> int:
         "drop": _drop,
         "clear": _clear,
         "show": _show,
+        "branch": _branch,
     }
     handler = handlers.get(subcommand)
     if handler is None:
@@ -343,3 +344,21 @@ def _show(ctx, argv: List[str]) -> int:
     for saved in entry.untracked:
         ctx.echo("untracked: %s" % saved["path"])
     return 0
+
+
+def _branch(ctx, argv: List[str]) -> int:
+    """`git stash branch <name> [<stash>]`: start a branch and restore there.
+
+    Useful when a stash no longer applies to the branch you are on; in
+    Subversion terms, switch to a fresh branch directory and unstash into it.
+    """
+    positionals = [a for a in argv if not a.startswith("-")]
+    if not positionals:
+        raise UsageError("git stash branch <branchname> [<stash>]")
+    name = positionals[0]
+
+    from .branching import cmd_checkout
+
+    if cmd_checkout(ctx, ["-b", name]) != 0:
+        return 1
+    return _apply(ctx, positionals[1:], drop=True)

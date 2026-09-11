@@ -203,6 +203,12 @@ option the parser declares and fails the build on any that is silently
 ignored, because an option that quietly does nothing is worse than one that
 is rejected — you asked for something and believed you got it.
 
+Beyond the everyday set, svngit also has `grep` (versioned files only),
+`apply` and `format-patch` (which round-trip with each other), `archive`
+(`svn export` into a tar or zip), `shortlog`, `describe` (named from the
+nearest tag directory), `check-ignore`, `sparse-checkout` (Subversion's own
+sparse directories), and `difftool` / `mergetool`.
+
 The full command-by-command mapping is in [docs/COMMANDS.md](docs/COMMANDS.md).
 
 ## Configuration

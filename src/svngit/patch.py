@@ -26,6 +26,11 @@ from .errors import SvnGitError
 
 NO_NEWLINE = "\\ No newline at end of file"
 
+#: `git format-patch` ends the diff with this before its version banner. The
+#: trailing space is load-bearing -- without it the line is indistinguishable
+#: from the deletion of a line containing a single dash.
+MBOX_SIGNATURE = "-- "
+
 
 class PatchError(SvnGitError):
     """The edited patch does not apply to the content it was generated from."""
@@ -140,6 +145,10 @@ def parse_patch(text: str, default_path: Optional[str] = None) -> List[FilePatch
     last_sides: Tuple[str, ...] = ()
 
     for raw in text.splitlines():
+        if raw == MBOX_SIGNATURE:
+            # Everything after the mbox signature is the tool's version
+            # banner, not part of the diff.
+            break
         if raw.startswith("#"):
             continue  # git strips comment lines from the edited patch
 
@@ -149,11 +158,19 @@ def parse_patch(text: str, default_path: Optional[str] = None) -> List[FilePatch
             hunk = None
             continue
 
+        if raw.startswith("Index: "):
+            # svn's own diff header. Its `---`/`+++` lines carry a revision
+            # annotation, so the Index line is the cleaner source of the path.
+            current = FilePatch(_header_path(raw[len("Index: "):]))
+            files.append(current)
+            hunk = None
+            continue
+
         if raw.startswith("--- "):
             continue
         if raw.startswith("+++ "):
             if current is None:
-                current = FilePatch(_strip_prefix(raw[4:].strip()))
+                current = FilePatch(_header_path(raw[4:]))
                 files.append(current)
             continue
 
@@ -204,6 +221,15 @@ def _path_from_diff_header(line: str) -> str:
     if " b/" in remainder:
         return remainder.split(" b/", 1)[1].strip()
     return _strip_prefix(remainder.split()[-1])
+
+
+def _header_path(text: str) -> str:
+    """The path out of a `---`/`+++`/`Index:` line.
+
+    svn appends a tab and an annotation -- `(revision 3)`, `(working copy)` --
+    which is not part of the name.
+    """
+    return _strip_prefix(text.split("\t")[0].strip())
 
 
 def _strip_prefix(path: str) -> str:

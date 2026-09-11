@@ -296,3 +296,34 @@ def test_merge3_handles_insertions_and_deletions():
     theirs = BASE.replace("ten\n", "")
     merged = patch_mod.merge3(BASE, ours, theirs)
     assert "inserted" in merged and "ten" not in merged
+
+
+def test_mbox_signature_ends_the_patch():
+    """`git format-patch` appends "-- " and a version banner; the parser must
+    stop there rather than read the banner as diff content."""
+    text = render(BASE, BASE.replace("two", "TWO")) + "-- \n2.39.0\n"
+    patches = patch_mod.parse_patch(text)
+    assert patch_mod.apply_file_patch(BASE, patches[0]) == BASE.replace("two", "TWO")
+
+
+def test_a_deleted_line_of_one_dash_is_not_a_signature():
+    """"--" without the trailing space is a real deletion, not the end."""
+    base = "keep\n-\nkeep too\n"
+    work = "keep\nkeep too\n"
+    assert round_trip(base, work) == work
+
+
+def test_svn_style_headers_are_understood():
+    """`svn diff` labels files with `Index:` and annotates the ---/+++ paths
+    with a revision; `git apply` should still read them."""
+    text = (
+        "Index: a.txt\n"
+        "===================================================================\n"
+        "--- a.txt\t(revision 3)\n"
+        "+++ a.txt\t(working copy)\n"
+        "@@ -1,3 +1,3 @@\n"
+        " one\n-two\n+TWO\n three\n"
+    )
+    patches = patch_mod.parse_patch(text)
+    assert [p.path for p in patches] == ["a.txt"]
+    assert patch_mod.apply_file_patch("one\ntwo\nthree\n", patches[0]) == "one\nTWO\nthree\n"

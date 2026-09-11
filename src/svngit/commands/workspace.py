@@ -532,3 +532,126 @@ def cmd_clean(ctx, argv: List[str]) -> int:
                 continue
         removed += 1
     return 0
+
+
+# ----------------------------------------------------------------------
+# sparse-checkout
+# ----------------------------------------------------------------------
+SPARSE_KEY = "svngit.sparse"
+
+
+def cmd_sparse_checkout(ctx, argv: List[str]) -> int:
+    """Subversion calls this sparse directories, set with `svn update --set-depth`.
+
+    The mapping is direct: a path in the cone is checked out at full depth,
+    everything beside it is excluded. The chosen set is remembered so that
+    `list` can report it, since Subversion stores depth per directory rather
+    than as a list.
+    """
+    subcommand = argv[0] if argv and not argv[0].startswith("-") else None
+    rest = argv[1:] if subcommand else argv
+
+    handlers = {
+        "list": _sparse_list,
+        "set": lambda c, a: _sparse_apply(c, a, replace=True),
+        "add": lambda c, a: _sparse_apply(c, a, replace=False),
+        "init": _sparse_init,
+        "disable": _sparse_disable,
+        "reapply": lambda c, a: _sparse_apply(c, [], replace=False),
+    }
+    handler = handlers.get(subcommand or "")
+    if handler is None:
+        raise UsageError(
+            "git sparse-checkout (list | set <paths> | add <paths> | init | disable)"
+        )
+    return handler(ctx, rest)
+
+
+def _sparse_paths(ctx) -> List[str]:
+    stored = ctx.state.get_config(SPARSE_KEY, "")
+    return [p for p in stored.split("\n") if p]
+
+
+def _sparse_list(ctx, argv: List[str]) -> int:
+    paths = _sparse_paths(ctx)
+    if not paths:
+        ctx.warn("this working copy is not sparse")
+        return 1
+    for path in paths:
+        ctx.echo(path)
+    return 0
+
+
+def _sparse_init(ctx, argv: List[str]) -> int:
+    opts = parse(argv, flags=["cone", "no-cone", "sparse-index"])
+    refuse("sparse-checkout", opts, {
+        "no-cone": "Subversion excludes whole directories, never individual "
+                   "files by pattern, so only cone mode exists here.",
+    })
+    no_effect(ctx, "sparse-checkout", opts, {
+        "sparse-index": "Subversion records depth per directory; there is no "
+                        "index to shrink.",
+    })
+    # --cone is the only mode, so it needs no handling.
+    ctx.state.set_config(SPARSE_KEY, "")
+    ctx.state.save()
+    ctx.echo(
+        "Sparse checkout enabled. Choose directories with "
+        "`git sparse-checkout set <path>...`."
+    )
+    return 0
+
+
+def _sparse_apply(ctx, argv: List[str], replace: bool) -> int:
+    opts = parse(argv, flags=["cone", "no-cone", "skip-checks", "stdin"])
+    refuse("sparse-checkout", opts, {
+        "no-cone": "Subversion excludes whole directories, never individual "
+                   "files by pattern, so only cone mode exists here.",
+    })
+    no_effect(ctx, "sparse-checkout", opts, {
+        "skip-checks": "the paths are handed to svn, which validates them itself.",
+    })
+    wanted = list(opts.paths)
+    if opts.has("stdin"):
+        import sys
+
+        wanted.extend(line.strip() for line in sys.stdin if line.strip())
+
+    keep = [] if replace else _sparse_paths(ctx)
+    for entry in wanted:
+        normalised = ctx.to_wc_path(entry).rstrip("/")
+        if normalised and normalised not in keep:
+            keep.append(normalised)
+    if not keep:
+        raise UsageError("git sparse-checkout set <path>...")
+
+    # Everything at the top that was not asked for is excluded; the chosen
+    # paths come back at full depth.
+    top_level = {path.split("/")[0] for path in keep}
+    for child in sorted(p.name for p in ctx.wc_root.iterdir() if p.name != ".svn"):
+        if child in top_level:
+            continue
+        ctx.svn.run(
+            "update", "--set-depth", "exclude", ctx.svn_target(child),
+            check=False, mutating=True,
+        )
+    for path in keep:
+        ctx.svn.run(
+            "update", "--set-depth", "infinity", ctx.svn_target(path),
+            check=False, mutating=True,
+        )
+
+    ctx.state.set_config(SPARSE_KEY, "\n".join(keep))
+    ctx.state.save()
+    return 0
+
+
+def _sparse_disable(ctx, argv: List[str]) -> int:
+    ctx.svn.run(
+        "update", "--set-depth", "infinity", str(ctx.wc_root),
+        mutating=True, capture=False,
+    )
+    ctx.state.unset_config(SPARSE_KEY)
+    ctx.state.save()
+    ctx.echo("Sparse checkout disabled; the full tree is back.")
+    return 0

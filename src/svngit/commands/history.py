@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
+import fnmatch
+import re
+from typing import Dict, List, Optional, Tuple
 
 from .. import formatting, revisions as rev_mod, status as status_mod
 from ..cliargs import no_effect, parse, refuse, split_revisions_and_paths
-from ..errors import UsageError
+from ..errors import SvnGitError, UsageError
 from ..state import ADD, DELETE
 from ..svnclient import parse_svn_date
 
@@ -18,7 +20,8 @@ def cmd_log(ctx, argv: List[str]) -> int:
     opts = parse(
         argv,
         flags=["oneline", "graph", "stat", "name-only", "name-status", "patch", "p", "reverse", "all", "decorate", "abbrev-commit", "no-merges", "follow"],
-        values=["max-count", "n", "author", "grep", "since", "after", "until", "before", "pretty", "format", "skip"],
+        values=["max-count", "n", "author", "grep", "since", "after", "until",
+                "before", "pretty", "format", "skip", "S", "G"],
         allow_numeric=True,
     )
     revisions, paths = split_revisions_and_paths(ctx, opts.positionals)
@@ -56,6 +59,9 @@ def cmd_log(ctx, argv: List[str]) -> int:
         wanted = str(opts.get("author"))
         entries = [e for e in entries if wanted.lower() in e.author.lower()]
 
+    if opts.has("S") or opts.has("G"):
+        entries = _pickaxe(ctx, entries, opts, target)
+
     if opts.has("skip"):
         entries = entries[int(str(opts.get("skip"))) :]
     if opts.has("reverse"):
@@ -78,6 +84,49 @@ def cmd_log(ctx, argv: List[str]) -> int:
         ):
             ctx.echo(line)
     return 0
+
+
+def _pickaxe(ctx, entries, opts, target: str):
+    """Filter revisions by what their diff contains.
+
+    `svn log --search` matches the commit message only, so -S and -G have to
+    read each revision's diff. That costs one `svn diff` per revision, which
+    is why the caller should narrow the range first.
+    """
+    needle = opts.first("S")
+    expression = opts.first("G")
+    matcher = None
+    if expression is not None:
+        try:
+            matcher = re.compile(str(expression))
+        except re.error as exc:
+            raise UsageError("invalid regex for -G: %s" % exc)
+
+    if len(entries) > 200:
+        ctx.note(
+            "-S/-G reads the diff of every revision in range; narrowing with "
+            "-n or a revision range will be much faster"
+        )
+
+    kept = []
+    for entry in entries:
+        result = ctx.svn.run("diff", "-c", str(entry.revision), target, check=False)
+        if not result.ok:
+            continue
+        changed = [
+            line for line in result.stdout.splitlines()
+            if line.startswith(("+", "-")) and not line.startswith(("+++", "---"))
+        ]
+        if matcher is not None:
+            if any(matcher.search(line[1:]) for line in changed):
+                kept.append(entry)
+            continue
+        # -S is git's "how many times does this string appear" test: keep the
+        # revision when an added or removed line mentions it.
+        text = str(needle)
+        if any(text in line[1:] for line in changed):
+            kept.append(entry)
+    return kept
 
 
 def _log_range(ctx, revisions: List[str], target: str, opts) -> Optional[str]:
@@ -350,3 +399,150 @@ def cmd_blame(ctx, argv: List[str]) -> int:
         else:
             ctx.echo("%s (%-16s %s %*d) %s" % (revision_id, author, date, width, number, line))
     return 0
+
+
+# ----------------------------------------------------------------------
+# shortlog
+# ----------------------------------------------------------------------
+def cmd_shortlog(ctx, argv: List[str]) -> int:
+    """Group the log by author, as `git shortlog` does."""
+    opts = parse(
+        argv,
+        flags=["summary", "s", "numbered", "n", "email", "e", "committer", "c"],
+        values=["max-count", "author"],
+        allow_numeric=True,
+    )
+    no_effect(ctx, "shortlog", opts, {
+        "committer": "Subversion records one author per revision; there is no "
+                     "separate committer to group by.",
+        "c": "Subversion records one author per revision; there is no "
+             "separate committer to group by.",
+    })
+    revisions, paths = split_revisions_and_paths(ctx, opts.positionals)
+    target = ctx.svn_target(ctx.to_wc_path(paths[0])) if paths else str(ctx.wc_root)
+
+    limit = opts.first("max-count", "n")
+    entries = ctx.svn.log(
+        target,
+        revision=rev_mod.to_svn_range(ctx, revisions[0], target) if revisions else None,
+        limit=int(limit) if limit else None,
+    )
+    if opts.has("author"):
+        wanted = str(opts.get("author")).lower()
+        entries = [e for e in entries if wanted in e.author.lower()]
+
+    grouped: Dict[str, List[str]] = {}
+    for entry in entries:
+        subject = entry.message.strip().splitlines()[0] if entry.message.strip() else "(no message)"
+        grouped.setdefault(entry.author, []).append(subject)
+
+    uuid = ctx.info.repos_uuid
+    order = sorted(
+        grouped,
+        key=(lambda a: (-len(grouped[a]), a.lower())) if opts.has("numbered", "n")
+        else (lambda a: a.lower()),
+    )
+    for author in order:
+        subjects = grouped[author]
+        name = formatting.author_line(author, uuid) if opts.has("email", "e") else author
+        if opts.has("summary", "s"):
+            ctx.echo("%6d\t%s" % (len(subjects), name))
+            continue
+        ctx.echo("%s (%d):" % (name, len(subjects)))
+        for subject in subjects:
+            ctx.echo("      %s" % subject)
+        ctx.echo("")
+    return 0
+
+
+# ----------------------------------------------------------------------
+# describe
+# ----------------------------------------------------------------------
+def cmd_describe(ctx, argv: List[str]) -> int:
+    """Name a revision after the most recent tag that precedes it.
+
+    A Subversion tag is a directory copied from some revision, so "the tag
+    this revision descends from" is the newest tag whose copy source is at or
+    before it.
+    """
+    from .. import layout as layout_mod
+
+    opts = parse(
+        argv,
+        flags=["tags", "all", "always", "dirty", "long", "contains"],
+        values=["match", "abbrev", "candidates"],
+    )
+    refuse("describe", opts, {
+        "contains": "that asks which later tag contains a revision; use "
+                    "`git tag --contains <rev>` instead.",
+    })
+    no_effect(ctx, "describe", opts, {
+        "abbrev": "a revision number is already its shortest form.",
+        "candidates": "tags are compared by the revision they were copied from, "
+                      "so the best match is found without a search limit.",
+    })
+
+    spec = opts.positionals[0] if opts.positionals else "HEAD"
+    target_rev = rev_mod.resolve(ctx, spec, str(ctx.wc_root))
+    info, lay = ctx.info, ctx.layout
+
+    best_name, best_rev = None, -1
+    for name in layout_mod.list_tags(ctx.svn, info, lay):
+        if opts.has("match") and not fnmatch.fnmatch(name, str(opts.get("match"))):
+            continue
+        created = _tag_source_revision(ctx, info, lay, name)
+        if created is None or created > target_rev:
+            continue
+        if created > best_rev:
+            best_name, best_rev = name, created
+
+    if best_name is None:
+        if opts.has("always"):
+            ctx.echo(formatting.revision_id(target_rev))
+            return 0
+        raise SvnGitError(
+            "no tags can describe %s.\nTry --always, or create a tag first."
+            % formatting.revision_id(target_rev)
+        )
+
+    distance = _revisions_between(ctx, best_rev, target_rev)
+    suffix = _dirty_suffix(ctx) if opts.has("dirty") else ""
+    if distance == 0 and not opts.has("long"):
+        ctx.echo(best_name + suffix)
+    else:
+        ctx.echo("%s-%d-%s%s" % (best_name, distance, formatting.revision_id(target_rev), suffix))
+    return 0
+
+
+def _tag_source_revision(ctx, info, lay, name: str) -> Optional[int]:
+    from .. import layout as layout_mod
+
+    url = layout_mod.tag_url(info, lay, name)
+    entries = ctx.svn.log(url, limit=1, stop_on_copy=True, verbose=True)
+    if not entries:
+        return None
+    for path in entries[0].paths:
+        if path.copyfrom_rev is not None:
+            return path.copyfrom_rev
+    return entries[0].revision
+
+
+def _revisions_between(ctx, start: int, end: int) -> int:
+    """How many revisions touched this branch between two points."""
+    if end <= start:
+        return 0
+    entries = ctx.svn.log(str(ctx.wc_root), revision="%d:%d" % (end, start + 1))
+    return len(entries)
+
+
+def _dirty_suffix(ctx) -> str:
+    report = status_mod.compute(ctx)
+    return "-dirty" if any(not e.untracked and not e.ignored for e in report.entries) else ""
+
+
+# ----------------------------------------------------------------------
+# whatchanged
+# ----------------------------------------------------------------------
+def cmd_whatchanged(ctx, argv: List[str]) -> int:
+    """git's older spelling of `log --raw`; here, log with the paths shown."""
+    return cmd_log(ctx, list(argv) + ["--name-status"])

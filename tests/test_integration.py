@@ -638,3 +638,157 @@ def test_stash_patch_pop_merges_with_later_work(cli, svn_repo):
     assert code == 0, err
     result = (wc / "a.txt").read_text()
     assert "TWO" in result and "TEN" in result and "FIVE" in result
+
+
+# ----------------------------------------------------------------------
+# the commands added after the first pass
+# ----------------------------------------------------------------------
+def test_grep_searches_only_versioned_files(cli, svn_repo):
+    wc = svn_repo["wc"]
+    (wc / "tracked.txt").write_text("findme here\n")
+    cli("add", "tracked.txt")
+    cli("commit", "-m", "seed")
+    cli("push")
+    (wc / "untracked.txt").write_text("findme too\n")
+
+    code, out, err = cli("grep", "findme")
+    assert code == 0, err
+    assert "tracked.txt" in out
+    assert "untracked.txt" not in out
+
+    code, out, _ = cli("grep", "--untracked", "findme")
+    assert "untracked.txt" in out
+
+
+def test_grep_exit_code_and_line_numbers(cli, svn_repo):
+    wc = svn_repo["wc"]
+    (wc / "a.txt").write_text("one\ntwo\nthree\n")
+    cli("add", "a.txt")
+    cli("commit", "-m", "seed")
+    cli("push")
+
+    code, out, _ = cli("grep", "-n", "two")
+    assert code == 0 and "a.txt:2:two" in out
+    assert cli("grep", "absent-string")[0] == 1
+
+
+def test_apply_a_patch_produced_by_format_patch(cli, svn_repo, tmp_path):
+    """The two halves have to agree: what format-patch writes, apply reads."""
+    wc = svn_repo["wc"]
+    (wc / "a.txt").write_text("one\ntwo\nthree\n")
+    cli("add", "a.txt")
+    cli("commit", "-m", "seed")
+    cli("push")
+
+    (wc / "a.txt").write_text("one\nTWO\nthree\n")
+    cli("add", "a.txt")
+    cli("commit", "-m", "change two")
+    cli("push")
+
+    out_dir = tmp_path / "patches"
+    code, out, err = cli("format-patch", "-o", str(out_dir), "-1")
+    assert code == 0, err
+    written = sorted(out_dir.glob("*.patch"))
+    assert len(written) == 1
+    assert "change two" in written[0].read_text()
+
+    # Roll the change back, then re-apply it from the patch file.
+    (wc / "a.txt").write_text("one\ntwo\nthree\n")
+    code, out, err = cli("apply", str(written[0]))
+    assert code == 0, err
+    assert (wc / "a.txt").read_text() == "one\nTWO\nthree\n"
+
+
+def test_archive_exports_a_revision(cli, svn_repo, tmp_path):
+    import tarfile
+    import zipfile
+
+    wc = svn_repo["wc"]
+    (wc / "a.txt").write_text("content\n")
+    (wc / "sub").mkdir()
+    (wc / "sub" / "b.txt").write_text("nested\n")
+    cli("add", "a.txt")
+    cli("add", "sub")
+    cli("commit", "-m", "seed")
+    cli("push")
+
+    tar_path = tmp_path / "out.tar"
+    code, out, err = cli("archive", "-o", str(tar_path), "HEAD")
+    assert code == 0, err
+    with tarfile.open(tar_path) as archive:
+        names = archive.getnames()
+    assert "a.txt" in names and "sub/b.txt" in names
+
+    zip_path = tmp_path / "out.zip"
+    code, _, err = cli("archive", "--prefix", "proj", "-o", str(zip_path), "HEAD")
+    assert code == 0, err
+    with zipfile.ZipFile(zip_path) as archive:
+        assert "proj/a.txt" in archive.namelist()
+
+
+def test_describe_names_a_tag(cli, svn_repo):
+    wc = svn_repo["wc"]
+    (wc / "a.txt").write_text("one\n")
+    cli("add", "a.txt")
+    cli("commit", "-m", "seed")
+    cli("push")
+    cli("tag", "v1.0")
+
+    code, out, err = cli("describe")
+    assert code == 0, err
+    assert out.strip().startswith("v1.0")
+
+    (wc / "a.txt").write_text("two\n")
+    cli("add", "a.txt")
+    cli("commit", "-m", "after the tag")
+    cli("push")
+
+    code, out, err = cli("describe")
+    assert code == 0, err
+    assert out.strip().startswith("v1.0-")   # tag, distance, revision
+
+
+def test_shortlog_summarises_real_history(cli, svn_repo):
+    wc = svn_repo["wc"]
+    for n in (1, 2):
+        (wc / "a.txt").write_text("v%d\n" % n)
+        cli("add", "a.txt")
+        cli("commit", "-m", "change %d" % n)
+    cli("push")
+
+    code, out, err = cli("shortlog", "-s")
+    assert code == 0, err
+    # Three revisions: the fixture's layout commit plus the two made here.
+    assert out.strip().split()[0] == "3"
+
+
+def test_sparse_checkout_excludes_and_restores(cli, svn_repo):
+    wc = svn_repo["wc"]
+    for name in ("keep", "drop"):
+        (wc / name).mkdir()
+        (wc / name / "f.txt").write_text(name + "\n")
+        cli("add", name)
+    cli("commit", "-m", "two directories")
+    cli("push")
+
+    code, out, err = cli("sparse-checkout", "set", "keep")
+    assert code == 0, err
+    assert (wc / "keep" / "f.txt").exists()
+    assert not (wc / "drop").exists()
+
+    code, out, _ = cli("sparse-checkout", "list")
+    assert out.strip() == "keep"
+
+    code, _, err = cli("sparse-checkout", "disable")
+    assert code == 0, err
+    assert (wc / "drop" / "f.txt").exists()
+
+
+def test_check_ignore_reads_svn_ignore(cli, svn_repo):
+    wc = svn_repo["wc"]
+    svn("propset", "svn:ignore", "*.log", str(wc))
+
+    code, out, err = cli("check-ignore", "debug.log")
+    assert code == 0, err
+    assert "debug.log" in out
+    assert cli("check-ignore", "source.c")[0] == 1
