@@ -1,9 +1,37 @@
 # Command mapping
 
-Every git command svngit understands, and what it actually runs.
+Every git command svngit understands, and the `svn` it actually runs.
 
-`^/` is Subversion shorthand for the repository root. Paths passed to `svn` are
-always absolute, so behaviour does not depend on which subdirectory you are in.
+If you are looking for *why* something behaves the way it does, the
+[README](../README.md) explains the reasoning. This file is the lookup table.
+
+## How to read it
+
+Each table has three columns: the git command you type, the Subversion command
+it becomes, and anything surprising about the translation.
+
+Two conventions appear in the middle column:
+
+| You see | It means |
+| --- | --- |
+| *no svn call* | Handled entirely inside svngit. Nothing is run, and nothing reaches the server. |
+| *ignored* | The option is accepted for compatibility but cannot change anything here. svngit says so on stderr rather than staying silent. |
+| — | No Subversion equivalent. The command explains what to use instead. |
+
+Two things are true throughout:
+
+- `^/` is Subversion's shorthand for the repository root, so `^/branches/x`
+  means that directory in the repository regardless of where you are.
+- Paths handed to `svn` are always absolute, so behaviour never depends on
+  which subdirectory you run the command from.
+
+## Contents
+
+[Working copy](#working-copy) · [History](#history) · [Sharing](#sharing) ·
+[Branching](#branching) · [Patches and archives](#patches-and-archives) ·
+[Stash](#stash) · [Sparse checkouts and tools](#sparse-checkouts-and-tools) ·
+[Plumbing](#plumbing) · [Revision syntax](#revision-syntax) ·
+[Aliases](#aliases) · [No equivalent](#no-equivalent)
 
 ## Working copy
 
@@ -61,14 +89,6 @@ always absolute, so behaviour does not depend on which subdirectory you are in.
 | `git grep <pattern>` | *no svn call* | Searches versioned files, skipping `.svn` and anything unversioned or ignored. `--untracked` widens it. |
 | `git check-ignore <path>` | `svn propget svn:ignore` | Reads the patterns, so a path that does not exist yet can still be checked. |
 
-## Patches and archives
-
-| git | svn | Notes |
-| --- | --- | --- |
-| `git apply <patch>` | *no svn call* | svngit's own applier, so stale hunk headers and svn-style `Index:` headers both work. All-or-nothing: a patch that fails changes nothing. `--check`, `-R`, `--stat`, `-p<n>`. |
-| `git format-patch <range>` | `svn log` + `svn diff -c N` | One mbox-format file per revision, with git-style headers so `git apply` elsewhere accepts them. `--stdout`, `-o`, `-<n>`. |
-| `git archive -o <file> <rev>` | `svn export` | tar, tar.gz or zip, chosen by `--format` or the file extension. `--prefix` nests the contents. |
-
 ## Sharing
 
 | git | svn | Notes |
@@ -107,6 +127,14 @@ always absolute, so behaviour does not depend on which subdirectory you are in.
 | `git tag` | `svn list ^/tags` | |
 | `git tag <name>` | `svn copy ^/<current> ^/tags/<name> -m` | |
 | `git tag -d <name>` | `svn delete ^/tags/<name> -m` | |
+
+## Patches and archives
+
+| git | svn | Notes |
+| --- | --- | --- |
+| `git apply <patch>` | *no svn call* | svngit's own applier, so stale hunk headers and svn-style `Index:` headers both work. All-or-nothing: a patch that fails changes nothing. `--check`, `-R`, `--stat`, `-p<n>`. |
+| `git format-patch <range>` | `svn log` + `svn diff -c N` | One mbox-format file per revision, with git-style headers so `git apply` elsewhere accepts them. `--stdout`, `-o`, `-<n>`. |
+| `git archive -o <file> <rev>` | `svn export` | tar, tar.gz or zip, chosen by `--format` or the file extension. `--prefix` nests the contents. |
 
 ## Stash
 

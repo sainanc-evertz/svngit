@@ -62,9 +62,10 @@ def test_the_readme_refused_count_is_right():
         "no spelling for %d refused commands; add one to COUNT_WORDS and "
         "update the README" % len(NO_EQUIVALENT)
     )
-    assert "%s of them" % word in README, (
-        "README should say '%s of them' for the %d refused commands"
-        % (word, len(NO_EQUIVALENT))
+    # The invariant is the number, not any particular sentence around it.
+    assert word in README, (
+        "README should say '%s' somewhere: that is how many commands are "
+        "refused (%d)" % (word, len(NO_EQUIVALENT))
     )
 
 
@@ -73,3 +74,70 @@ def test_the_readme_command_count_is_right():
     assert "%d commands" % len(REGISTRY) in README, (
         "README should say '%d commands'" % len(REGISTRY)
     )
+
+
+# ----------------------------------------------------------------------
+# links and images
+# ----------------------------------------------------------------------
+import re  # noqa: E402
+
+DOCS = {"README.md": README, "docs/COMMANDS.md": MAPPING}
+
+
+def _headings(text):
+    """GitHub's heading slugs, near enough for link checking."""
+    found = set()
+    for line in text.splitlines():
+        match = re.match(r"^#+\s+(.*)", line)
+        if not match:
+            continue
+        slug = re.sub(r"[`*_]", "", match.group(1).lower())
+        slug = re.sub(r"[^\w\s-]", "", slug)
+        found.add(re.sub(r"\s+", "-", slug.strip()))
+    return found
+
+
+def test_referenced_images_exist():
+    for doc, text in DOCS.items():
+        base = (ROOT / doc).parent
+        refs = re.findall(r"!\[[^\]]*\]\(([^)]+)\)", text)
+        refs += re.findall(r'<img[^>]+src="([^"]+)"', text)
+        for ref in refs:
+            assert (base / ref).exists(), "%s references a missing image: %s" % (doc, ref)
+
+
+def test_images_have_alt_text():
+    """The images carry real terminal output; a reader who cannot see them
+    should still learn what they show."""
+    for doc, text in DOCS.items():
+        for alt in re.findall(r"!\[([^\]]*)\]\([^)]+\)", text):
+            assert len(alt) > 20, "%s has an image with thin alt text: %r" % (doc, alt)
+        for tag in re.findall(r"<img[^>]*>", text, re.S):
+            match = re.search(r'alt="([^"]*)"', tag)
+            assert match and len(match.group(1)) > 20, (
+                "%s has an <img> with thin alt text" % doc
+            )
+
+
+def test_internal_anchors_resolve():
+    for doc, text in DOCS.items():
+        available = _headings(text)
+        for anchor in re.findall(r"\]\(#([^)]+)\)", text):
+            assert anchor in available, "%s links to a missing section: #%s" % (doc, anchor)
+
+
+def test_relative_links_resolve():
+    for doc, text in DOCS.items():
+        base = (ROOT / doc).parent
+        for link in re.findall(r"\]\((?!#)(?!https?:)([^)]+)\)", text):
+            assert (base / link).exists(), "%s links to a missing file: %s" % (doc, link)
+
+
+def test_sample_output_is_not_hand_written():
+    """The README claims every screenshot is real captured output. Keep that
+    true by not letting fabricated `console` transcripts creep back in."""
+    for doc, text in DOCS.items():
+        assert "```console" not in text, (
+            "%s has a hand-written console block; capture it with "
+            "docs/demo/capture.sh and render it instead" % doc
+        )

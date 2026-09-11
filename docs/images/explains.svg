@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="654" height="316" viewBox="0 0 654 316" role="img" aria-label="when there is no equivalent, it says so">
+<rect width="654" height="316" rx="8" fill="#1e1e2e"/>
+<path d="M0 30 V8 a8 8 0 0 1 8 -8 H646 a8 8 0 0 1 8 8 V30 Z" fill="#181825"/>
+<circle cx="18" cy="15" r="5" fill="#f38ba8"/>
+<circle cx="36" cy="15" r="5" fill="#f9e2af"/>
+<circle cx="54" cy="15" r="5" fill="#a6e3a1"/>
+<text x="327" y="19.5" font-family="'SF Mono','SFMono-Regular',Menlo,Consolas,'DejaVu Sans Mono','Liberation Mono',monospace" font-size="11.5" fill="#9399b2" text-anchor="middle">when there is no equivalent, it says so</text>
+<g font-family="'SF Mono','SFMono-Regular',Menlo,Consolas,'DejaVu Sans Mono','Liberation Mono',monospace" font-size="13.5">
+<text x="18.0" y="40.0" xml:space="preserve"><tspan fill="#a6e3a1">$ </tspan><tspan fill="#cdd6f4">git rebase main</tspan></text>
+<text x="18.0" y="60.0" xml:space="preserve" fill="#cdd6f4">fatal: git rebase has no Subversion equivalent: Subversion has no way to</text>
+<text x="18.0" y="80.0" xml:space="preserve" fill="#cdd6f4">  rewrite history. `git pull` already replays your local changes on top of</text>
+<text x="18.0" y="100.0" xml:space="preserve" fill="#cdd6f4">  the server's, which is what a rebase onto the upstream would do.</text>
+<text x="18.0" y="120.0" xml:space="preserve" fill="#cdd6f4">$</text>
+<text x="18.0" y="140.0" xml:space="preserve"><tspan fill="#a6e3a1">$ </tspan><tspan fill="#cdd6f4">git merge --strategy=ours feature-x</tspan></text>
+<text x="18.0" y="160.0" xml:space="preserve" fill="#cdd6f4">fatal: git merge --strategy: Subversion has one merge algorithm; there is no</text>
+<text x="18.0" y="180.0" xml:space="preserve" fill="#cdd6f4">  strategy to pick.</text>
+<text x="18.0" y="200.0" xml:space="preserve" fill="#cdd6f4">$</text>
+<text x="18.0" y="220.0" xml:space="preserve"><tspan fill="#a6e3a1">$ </tspan><tspan fill="#cdd6f4">git push --tags</tspan></text>
+<text x="18.0" y="240.0" xml:space="preserve" fill="#cdd6f4">svngit: git push --tags: Subversion tags are directories and are created on</text>
+<text x="18.0" y="260.0" xml:space="preserve" fill="#cdd6f4">  the server by `git tag`; there is nothing left to push.</text>
+<text x="18.0" y="280.0" xml:space="preserve" fill="#cdd6f4">Everything up-to-date</text>
+</g></svg>
