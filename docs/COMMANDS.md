@@ -100,6 +100,7 @@ files, all kept in the local object store. The server is never involved.
 | git | Behaviour |
 | --- | --- |
 | `git stash` / `push` | `svn diff` → object store, then `svn revert -R .` |
+| `git stash -p` | Choose hunks to take out of the working copy. Accepting one removes it and saves it; declining leaves it alone. Stores both content versions, so `pop` restores exactly, or three-way merges if the file moved on. |
 | `git stash -u` | Also saves and removes untracked files |
 | `git stash list` | Newest first, as `stash@{0}` |
 | `git stash pop` / `apply` | `svn patch`, plus restoring untracked files and the index |

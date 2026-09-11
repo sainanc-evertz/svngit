@@ -164,7 +164,11 @@ revision undoing an old one. That is git's meaning. Subversion's own
 `git checkout --`.
 
 `git stash` is a local `svn diff` plus `svn patch`, stored in the object store.
-Nothing touches the server.
+Nothing touches the server. `git stash -p` picks hunks with the same prompt as
+`git add -p`, but the sense is inverted: a hunk you accept is taken *out* of
+the working copy and saved, and one you decline stays put. It diffs against
+the last commit rather than the index, since a stash saves staged work too,
+and `pop` three-way merges so a file you kept working on is not clobbered.
 
 `git fetch` lists the revisions waiting on the server but cannot download them,
 because a Subversion working copy has nowhere to keep revisions it has not

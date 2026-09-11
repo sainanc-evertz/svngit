@@ -575,3 +575,66 @@ def test_add_patch_per_hunk_edit(cli, svn_repo):
     assert "TEN\n" not in on_server
     # The working copy still holds what was actually typed there.
     assert "TEN" in (wc / "a.txt").read_text()
+
+
+def _run_stash_patch(svn_repo, answers, cwd=None):
+    import io
+
+    from svngit.cli import dispatch
+    from svngit.context import Context
+
+    stdout, stderr = io.StringIO(), io.StringIO()
+    stdin = io.StringIO("".join(a + "\n" for a in answers))
+    ctx = Context(cwd=cwd or svn_repo["wc"], stdout=stdout, stderr=stderr, stdin=stdin)
+    code = dispatch(ctx, "stash", ["-p"])
+    return code, stdout.getvalue(), stderr.getvalue()
+
+
+def test_stash_patch_keeps_the_declined_hunk_in_the_working_copy(cli, svn_repo):
+    wc = svn_repo["wc"]
+    _seed(cli, wc)
+    (wc / "a.txt").write_text(PATCH_BASE.replace("two", "TWO").replace("ten", "TEN"))
+
+    code, out, err = _run_stash_patch(svn_repo, ["y", "n"])
+    assert code == 0, err
+
+    on_disk = (wc / "a.txt").read_text()
+    assert "TWO" not in on_disk   # stashed away
+    assert "TEN" in on_disk       # declined, still here
+
+    code, out, _ = cli("stash", "list")
+    assert "stash@{0}" in out
+
+    code, out, err = cli("stash", "pop")
+    assert code == 0, err
+    restored = (wc / "a.txt").read_text()
+    assert "TWO" in restored and "TEN" in restored
+
+
+def test_stash_patch_then_commit_only_what_was_kept(cli, svn_repo):
+    wc = svn_repo["wc"]
+    _seed(cli, wc)
+    (wc / "a.txt").write_text(PATCH_BASE.replace("two", "TWO").replace("ten", "TEN"))
+
+    _run_stash_patch(svn_repo, ["y", "n"])
+    cli("add", "a.txt")
+    cli("commit", "-m", "just the kept change")
+    assert cli("push")[0] == 0
+
+    on_server = svn("cat", svn_repo["url"] + "/trunk/a.txt")
+    assert "TEN" in on_server and "TWO" not in on_server
+
+
+def test_stash_patch_pop_merges_with_later_work(cli, svn_repo):
+    wc = svn_repo["wc"]
+    _seed(cli, wc)
+    (wc / "a.txt").write_text(PATCH_BASE.replace("two", "TWO").replace("ten", "TEN"))
+    _run_stash_patch(svn_repo, ["y", "n"])
+
+    # Work on an unrelated line while the hunk is stashed.
+    (wc / "a.txt").write_text((wc / "a.txt").read_text().replace("five", "FIVE"))
+
+    code, out, err = cli("stash", "pop")
+    assert code == 0, err
+    result = (wc / "a.txt").read_text()
+    assert "TWO" in result and "TEN" in result and "FIVE" in result

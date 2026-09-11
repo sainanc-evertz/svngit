@@ -267,3 +267,49 @@ def _locate(
     if not matches:
         return None
     return min(matches, key=lambda index: abs(index - hint))
+
+
+# ----------------------------------------------------------------------
+# three-way merge
+# ----------------------------------------------------------------------
+def merge3(ancestor: str, ours: str, theirs: str) -> Optional[str]:
+    """Combine two independent sets of edits to `ancestor`. None on conflict.
+
+    Restoring a `git stash -p` entry onto a file that has moved on since needs
+    this rather than patch application: the stashed delta's context comes from
+    the content the stash left behind, so an unrelated edit anywhere near it
+    would stop a patch from matching. With all three versions in hand the
+    edits can simply be combined.
+    """
+    base = ancestor.splitlines(keepends=True)
+    regions = _edits(base, ours.splitlines(keepends=True)) + _edits(
+        base, theirs.splitlines(keepends=True)
+    )
+
+    unique = []
+    for region in sorted(regions, key=lambda r: (r[0], r[1])):
+        if region not in unique:
+            unique.append(region)
+
+    out: List[str] = []
+    cursor = 0
+    for start, end, replacement in unique:
+        if start < cursor:
+            return None  # both sides rewrote the same lines
+        out.extend(base[cursor:start])
+        out.extend(replacement)
+        cursor = end
+    out.extend(base[cursor:])
+    return "".join(out)
+
+
+def _edits(base: List[str], other: List[str]) -> List[tuple]:
+    """Changed regions as (start, end, replacement) against `base`."""
+    from difflib import SequenceMatcher
+
+    matcher = SequenceMatcher(None, base, other, autojunk=False)
+    return [
+        (i1, i2, tuple(other[j1:j2]))
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes()
+        if tag != "equal"
+    ]

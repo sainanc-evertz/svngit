@@ -87,6 +87,15 @@ _EDIT_RETRY = object()
 
 
 @dataclass
+class Selection:
+    """The outcome of walking one file's hunks."""
+
+    accepted: List[patch_mod.PatchHunk]
+    rejected: List[patch_mod.PatchHunk]
+    quit: bool = False
+
+
+@dataclass
 class _Item:
     """One hunk on screen, and what the user has decided about it."""
 
@@ -100,14 +109,17 @@ class _Item:
 # ----------------------------------------------------------------------
 # shared
 # ----------------------------------------------------------------------
-def effective_base(ctx, entry: FileStatus) -> bytes:
+def effective_base(ctx, entry: FileStatus, use_index: bool = True) -> bytes:
     """What the worktree is being compared against.
 
     In order of precedence: the staged blob (git diffs index to worktree), then
     the newest queued local commit, then the pristine BASE copy. Skipping the
     middle case would re-offer hunks the user has already committed locally.
+
+    `use_index=False` ignores the staging area, which is what stash wants: it
+    saves every local change, staged or not.
     """
-    staged = ctx.state.index.get(entry.path)
+    staged = ctx.state.index.get(entry.path) if use_index else None
     if staged is not None and staged.blob is not None:
         return ctx.state.objects.read(staged.blob)
 
@@ -173,7 +185,38 @@ def _stage_one_file(ctx, entry: FileStatus) -> Optional[bool]:
         return False
 
     ctx.echo("diff --git a/%s b/%s" % (entry.path, entry.path))
+    selection = select_hunks(ctx, diff, base_text, entry.path)
 
+    if selection.accepted:
+        content = patch_mod.apply_file_patch(
+            base_text, patch_mod.FilePatch(entry.path, selection.accepted)
+        )
+        _stage_blob(ctx, entry, content)
+        insertions = deletions = 0
+        for hunk in selection.accepted:
+            added, removed = patch_mod.hunk_stats(hunk)
+            insertions += added
+            deletions += removed
+        ctx.echo(
+            "Staged %d hunk%s from %s (+%d/-%d)."
+            % (
+                len(selection.accepted),
+                "" if len(selection.accepted) == 1 else "s",
+                display,
+                insertions,
+                deletions,
+            )
+        )
+
+    return None if selection.quit else bool(selection.accepted)
+
+
+def select_hunks(ctx, diff, base_text: str, path: str, prompt: str = "Stage this hunk") -> Selection:
+    """Walk one file's hunks, returning what the user chose.
+
+    Shared by `git add -p`, which stages what is accepted, and
+    `git stash -p`, which takes it out of the working copy instead.
+    """
     queue = [_Item(hunk) for hunk in diff.hunks]
     position: Optional[int] = 0
     quit_all = False
@@ -183,7 +226,7 @@ def _stage_one_file(ctx, entry: FileStatus) -> Optional[bool]:
         for line in diff.render(item.hunk):
             ctx.echo(line)
 
-        answer = _ask(ctx, position, queue, splittable=item.hunk.splittable)
+        answer = _ask(ctx, position, queue, splittable=item.hunk.splittable, prompt=prompt)
         if answer is None or answer == QUIT:
             quit_all = True
             break
@@ -210,7 +253,7 @@ def _stage_one_file(ctx, entry: FileStatus) -> Optional[bool]:
             queue[position : position + 1] = [_Item(piece) for piece in pieces]
             ctx.echo("Split into %d hunks." % len(pieces))
         elif answer == "e":
-            edited = _edit_hunk(ctx, diff, item.hunk, entry.path, base_text, queue, position)
+            edited = _edit_hunk(ctx, diff, item.hunk, path, base_text, queue, position)
             if edited is _EDIT_RETRY or edited is None:
                 continue  # stay on this hunk, still undecided
             item.edited = edited
@@ -223,36 +266,29 @@ def _stage_one_file(ctx, entry: FileStatus) -> Optional[bool]:
         elif answer == "/":
             position = _search(ctx, diff, queue, position)
 
-    accepted = _accepted(diff, queue)
-    if accepted:
-        content = patch_mod.apply_file_patch(
-            base_text, patch_mod.FilePatch(entry.path, accepted)
-        )
-        _stage_blob(ctx, entry, content)
-        insertions = deletions = 0
-        for hunk in accepted:
-            added, removed = patch_mod.hunk_stats(hunk)
-            insertions += added
-            deletions += removed
-        ctx.echo(
-            "Staged %d hunk%s from %s (+%d/-%d)."
-            % (len(accepted), "" if len(accepted) == 1 else "s", display, insertions, deletions)
-        )
-
-    return None if quit_all else bool(accepted)
+    return Selection(
+        accepted=_hunks_where(diff, queue, True),
+        rejected=_hunks_where(diff, queue, False),
+        quit=quit_all,
+    )
 
 
-def _accepted(diff, queue: List[_Item]) -> List[patch_mod.PatchHunk]:
-    """Staged hunks in file order.
+def _hunks_where(diff, queue: List[_Item], chosen: bool) -> List[patch_mod.PatchHunk]:
+    """Hunks in file order, either the chosen ones or everything else.
 
     Order matters and answer order will not do: navigation lets a later hunk be
-    decided first, while the applier walks the file forward exactly once.
+    decided first, while the applier walks the file forward exactly once. An
+    undecided hunk counts as not chosen.
     """
-    return [
-        item.edited if item.edited is not None else patch_mod.from_diff_hunk(diff, item.hunk)
-        for item in queue
-        if item.decision
-    ]
+    out = []
+    for item in queue:
+        if bool(item.decision) is not chosen:
+            continue
+        if chosen and item.edited is not None:
+            out.append(item.edited)
+        else:
+            out.append(patch_mod.from_diff_hunk(diff, item.hunk))
+    return out
 
 
 # ----------------------------------------------------------------------

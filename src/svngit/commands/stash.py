@@ -45,10 +45,13 @@ def cmd_stash(ctx, argv: List[str]) -> int:
 def _push(ctx, argv: List[str]) -> int:
     opts = parse(
         argv,
-        flags=["include-untracked", "u", "keep-index", "k", "all", "a", "quiet", "q"],
+        flags=["include-untracked", "u", "keep-index", "k", "all", "a", "quiet", "q", "patch", "p"],
         values=["message", "m"],
     )
     message = str(opts.first("message", "m", default="")) or " ".join(opts.positionals)
+
+    if opts.has("patch", "p"):
+        return _push_patch(ctx, opts, message)
 
     report = status_mod.compute(ctx)
     tracked = [e for e in report.entries if not e.untracked and not e.ignored]
@@ -105,6 +108,127 @@ def _push(ctx, argv: List[str]) -> int:
     return 0
 
 
+def _push_patch(ctx, opts, message: str) -> int:
+    """`git stash -p`: choose hunks to take out of the working copy.
+
+    The sense is the opposite of `git add -p`. A hunk you accept is removed
+    from the working copy and kept in the stash; one you decline stays where
+    it is. Both content versions are stored, so `pop` can put the file back
+    exactly when nothing else has touched it since.
+    """
+    from .. import hunks as hunks_mod
+    from .. import patch as patch_mod
+    from .interactive import effective_base, select_hunks
+
+    report = status_mod.compute(ctx)
+    if opts.has("include-untracked", "u", "all", "a"):
+        ctx.note("untracked files have no hunks to choose from; -p ignores them")
+
+    saved: List[dict] = []
+    touched: List[str] = []
+    for entry in report.entries:
+        if entry.untracked or entry.ignored or entry.unmerged:
+            continue
+        absolute = ctx.abs_path(entry.path)
+        if not absolute.is_file():
+            continue
+
+        # Stash saves every local change, so compare against the last commit
+        # rather than against the staging area.
+        base_bytes = effective_base(ctx, entry, use_index=False)
+        work_bytes = absolute.read_bytes()
+        if base_bytes == work_bytes:
+            continue
+        if hunks_mod.is_binary(base_bytes) or hunks_mod.is_binary(work_bytes):
+            ctx.echo("%s is binary; skipping." % ctx.display_path(entry.path))
+            continue
+
+        base_text = base_bytes.decode("utf-8", errors="replace")
+        diff = hunks_mod.diff_file(base_text, work_bytes.decode("utf-8", errors="replace"))
+        if diff.empty:
+            continue
+
+        ctx.echo("diff --git a/%s b/%s" % (entry.path, entry.path))
+        selection = select_hunks(ctx, diff, base_text, entry.path, prompt="Stash this hunk")
+        if selection.accepted:
+            kept = patch_mod.apply_file_patch(
+                base_text, patch_mod.FilePatch(entry.path, selection.rejected)
+            )
+            saved.append(
+                {
+                    "path": entry.path,
+                    "full": ctx.state.objects.write(work_bytes),
+                    "kept": ctx.state.objects.write(kept.encode("utf-8")),
+                }
+            )
+            touched.append(entry.path)
+        if selection.quit:
+            break
+
+    if not saved:
+        ctx.echo("No local changes to save")
+        return 0
+
+    index_snapshot = {
+        path: vars(entry) for path, entry in ctx.state.index.items() if path in touched
+    }
+    timestamp = now()
+    stash_entry = StashEntry(
+        id=make_commit_id(message or "stash", [], timestamp),
+        message=message
+        or "WIP on %s: %s" % (ctx.branch, formatting.revision_id(ctx.info.revision)),
+        timestamp=timestamp,
+        base_revision=ctx.info.revision,
+        partial=saved,
+        index=index_snapshot,
+    )
+
+    # Write the kept content only after every file has been decided, so an
+    # interruption partway through leaves the working copy untouched.
+    for item in saved:
+        ctx.abs_path(item["path"]).write_bytes(ctx.state.objects.read(item["kept"]))
+        ctx.state.unstage(item["path"])
+
+    ctx.state.push_stash(stash_entry)
+    ctx.state.save()
+    if not opts.has("quiet", "q"):
+        ctx.echo("Saved working directory and index state %s" % stash_entry.message)
+    return 0
+
+
+def _restore_partial(ctx, entry: StashEntry) -> None:
+    """Put back a `-p` stash.
+
+    A three-way merge against the content the stash left behind. When nothing
+    has touched the file since, "ours" has no edits and the result is the
+    stashed content exactly; when it has, both sets of edits survive unless
+    they overlap.
+    """
+    from .. import patch as patch_mod
+
+    objects = ctx.state.objects
+    for item in entry.partial:
+        absolute = ctx.abs_path(item["path"])
+        full = objects.read(item["full"])
+        kept = objects.read(item["kept"])
+        current = absolute.read_bytes() if absolute.is_file() else b""
+
+        merged = patch_mod.merge3(
+            kept.decode("utf-8", errors="replace"),
+            current.decode("utf-8", errors="replace"),
+            full.decode("utf-8", errors="replace"),
+        )
+        if merged is None:
+            raise SvnGitError(
+                "could not restore %s: it was changed in the same place since "
+                "the stash was made.\n"
+                "The stash is still there; reconcile the file and try again."
+                % ctx.display_path(item["path"])
+            )
+        absolute.parent.mkdir(parents=True, exist_ok=True)
+        absolute.write_bytes(merged.encode("utf-8"))
+
+
 def _list(ctx, argv: List[str]) -> int:
     for position, entry in enumerate(ctx.state.stash):
         ctx.echo("stash@{%d}: %s" % (position, entry.message))
@@ -135,7 +259,9 @@ def _apply(ctx, argv: List[str], drop: bool) -> int:
     entries = ctx.state.stash
     entry = entries[position]
 
-    if entry.patch_blob:
+    if entry.partial:
+        _restore_partial(ctx, entry)
+    elif entry.patch_blob:
         patch = ctx.state.objects.read(entry.patch_blob)
         with tempfile.NamedTemporaryFile("wb", suffix=".patch", delete=False) as handle:
             handle.write(patch)
@@ -189,8 +315,18 @@ def _clear(ctx, argv: List[str]) -> int:
 
 
 def _show(ctx, argv: List[str]) -> int:
+    from .. import patch as patch_mod
+
     position = _resolve_index(ctx, argv)
     entry = ctx.state.stash[position]
+    for item in entry.partial:
+        objects = ctx.state.objects
+        for line in patch_mod.render_file_patch(
+            item["path"],
+            objects.read(item["kept"]).decode("utf-8", errors="replace"),
+            objects.read(item["full"]).decode("utf-8", errors="replace"),
+        ):
+            ctx.echo(line)
     if entry.patch_blob:
         ctx.echo(ctx.state.objects.read_text(entry.patch_blob).rstrip())
     for saved in entry.untracked:

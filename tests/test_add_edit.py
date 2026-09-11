@@ -257,3 +257,42 @@ def test_p_and_e_together_are_refused(harness):
     code = harness.run("add", "-p", "-e")
     assert code != 0
     assert "cannot be combined" in harness.err
+
+
+# ----------------------------------------------------------------------
+# three-way merge (used when restoring a partial stash)
+# ----------------------------------------------------------------------
+def test_merge3_with_no_local_edits_returns_theirs_exactly():
+    assert patch_mod.merge3(BASE, BASE, BASE.replace("two", "TWO")) == BASE.replace("two", "TWO")
+
+
+def test_merge3_combines_edits_in_different_places():
+    ours = BASE.replace("nine", "NINE")
+    theirs = BASE.replace("two", "TWO")
+    merged = patch_mod.merge3(BASE, ours, theirs)
+    assert "NINE" in merged and "TWO" in merged
+
+
+def test_merge3_combines_adjacent_edits():
+    ours = BASE.replace("four", "FOUR")
+    theirs = BASE.replace("two", "TWO")
+    merged = patch_mod.merge3(BASE, ours, theirs)
+    assert merged == BASE.replace("two", "TWO").replace("four", "FOUR")
+
+
+def test_merge3_reports_a_conflict_on_the_same_line():
+    ours = BASE.replace("two", "OURS")
+    theirs = BASE.replace("two", "THEIRS")
+    assert patch_mod.merge3(BASE, ours, theirs) is None
+
+
+def test_merge3_accepts_the_same_edit_from_both_sides():
+    same = BASE.replace("two", "TWO")
+    assert patch_mod.merge3(BASE, same, same) == same
+
+
+def test_merge3_handles_insertions_and_deletions():
+    ours = BASE.replace("one\n", "one\ninserted\n")
+    theirs = BASE.replace("ten\n", "")
+    merged = patch_mod.merge3(BASE, ours, theirs)
+    assert "inserted" in merged and "ten" not in merged

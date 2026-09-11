@@ -94,6 +94,10 @@ class StashEntry:
     untracked: List[Dict[str, str]] = field(default_factory=list)
     #: Index contents at stash time, so `stash pop` can restore staging.
     index: Dict[str, Dict] = field(default_factory=dict)
+    #: Set only by `git stash -p`, as [{"path", "full", "kept"}] -- the content
+    #: before stashing and the content left behind. Its presence is what marks
+    #: an entry as partial, which `pop` restores differently.
+    partial: List[Dict[str, str]] = field(default_factory=list)
 
 
 class ObjectStore:
