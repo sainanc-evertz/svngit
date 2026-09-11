@@ -183,3 +183,103 @@ def _ask(ctx, index: int, total: int, splittable: bool, prompt: str = "Stage thi
             ctx.echo("Sorry, cannot split this hunk")
             continue
         ctx.echo(HELP)
+
+
+# ----------------------------------------------------------------------
+# git add -e
+# ----------------------------------------------------------------------
+INSTRUCTIONS = """\
+# Editing the patch to be staged.
+#
+#   To drop an added line,    delete the '+' line.
+#   To keep a removed line,   change its '-' to a space (make it context).
+#   To change what is staged, edit the '+' line's text.
+#   Lines starting with '#' are ignored, as is anything you delete entirely.
+#
+# Hunk headers are recalculated, so the @@ line counts do not need fixing.
+# An empty patch, or quitting without saving, stages nothing.
+# If the patch does not apply, nothing at all is staged.
+"""
+
+
+def stage_edit(ctx, entries: List[FileStatus]) -> int:
+    """`git add -e`: hand the whole diff to the editor, stage what comes back."""
+    from .. import editor as editor_mod
+    from .. import patch as patch_mod
+
+    sources = {}
+    lines: List[str] = []
+    for entry in entries:
+        if entry.ignored or entry.unmerged:
+            continue
+        if entry.untracked:
+            ctx.echo(
+                "%s is untracked and has no diff to edit; use `git add %s`."
+                % (ctx.display_path(entry.path), ctx.display_path(entry.path))
+            )
+            continue
+        absolute = ctx.abs_path(entry.path)
+        if not absolute.is_file():
+            continue
+
+        base_bytes = effective_base(ctx, entry)
+        work_bytes = absolute.read_bytes()
+        if base_bytes == work_bytes:
+            continue
+        if hunks_mod.is_binary(base_bytes) or hunks_mod.is_binary(work_bytes):
+            ctx.echo("%s is binary; skipping (no patch to edit)." % ctx.display_path(entry.path))
+            continue
+
+        base = base_bytes.decode("utf-8", errors="replace")
+        rendered = patch_mod.render_file_patch(entry.path, base, work_bytes.decode("utf-8", errors="replace"))
+        if rendered:
+            sources[entry.path] = (entry, base)
+            lines.extend(rendered)
+
+    if not lines:
+        ctx.echo("No changes.")
+        return 0
+
+    edited = editor_mod.edit_text(
+        ctx, INSTRUCTIONS + "\n".join(lines) + "\n", suffix=".diff", what="patch"
+    )
+
+    try:
+        patches = patch_mod.parse_patch(edited)
+    except patch_mod.PatchError as exc:
+        ctx.warn("fatal: %s" % exc)
+        return 1
+
+    if not patches:
+        ctx.echo("No changes.")
+        return 0
+
+    # Apply everything before staging anything: a patch that fails partway
+    # must not leave half the files staged.
+    staged = []
+    for file_patch in patches:
+        if file_patch.path not in sources:
+            ctx.warn("fatal: the edited patch refers to an unknown file: %s" % file_patch.path)
+            return 1
+        entry, base = sources[file_patch.path]
+        try:
+            content = patch_mod.apply_file_patch(base, file_patch)
+        except patch_mod.PatchError as exc:
+            ctx.warn("fatal: %s" % exc)
+            ctx.warn("Nothing was staged.")
+            return 1
+        if content != base:
+            staged.append((entry, content))
+
+    if not staged:
+        ctx.echo("No changes.")
+        return 0
+
+    for entry, content in staged:
+        existing = ctx.state.index.get(entry.path)
+        blob = ctx.state.objects.write(content.encode("utf-8"))
+        action = entry.index if entry.index in (ADD, "R") else MODIFY
+        ctx.state.stage(entry.path, action, blob, existing.executable if existing else False)
+        ctx.echo("Staged the edited patch for %s." % ctx.display_path(entry.path))
+    ctx.state.save()
+    return 0

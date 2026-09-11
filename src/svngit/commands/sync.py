@@ -12,9 +12,6 @@ makes `git commit` talk to the server directly.
 from __future__ import annotations
 
 import getpass
-import os
-import subprocess
-import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Set
@@ -104,13 +101,9 @@ def _resolve_message(ctx, opts, index) -> str:
 
 
 def _edit_message(ctx, index) -> str:
-    editor = (
-        os.environ.get("GIT_EDITOR")
-        or os.environ.get("SVN_EDITOR")
-        or os.environ.get("VISUAL")
-        or os.environ.get("EDITOR")
-    )
-    if not editor:
+    from .. import editor as editor_mod
+
+    if editor_mod.find_editor() is None and getattr(ctx, "edit_hook", None) is None:
         raise UsageError(
             "no commit message supplied and no editor configured.\n"
             "Use -m \"message\", or set $EDITOR."
@@ -125,17 +118,10 @@ def _edit_message(ctx, index) -> str:
     ]
     for path, entry in sorted(index.items()):
         template.append("#\t%s: %s" % (formatting.STATUS_WORDS.get(entry.action, "modified"), path))
-    with tempfile.NamedTemporaryFile("w+", suffix=".COMMIT_EDITMSG", delete=False, encoding="utf-8") as handle:
-        handle.write("\n".join(template) + "\n")
-        temp_path = handle.name
-    try:
-        subprocess.run("%s %s" % (editor, temp_path), shell=True, check=True)
-        raw = Path(temp_path).read_text(encoding="utf-8")
-    finally:
-        os.unlink(temp_path)
-    return "\n".join(
-        line for line in raw.splitlines() if not line.startswith("#")
-    ).strip()
+    raw = editor_mod.edit_text(
+        ctx, "\n".join(template) + "\n", suffix=".COMMIT_EDITMSG", what="commit message"
+    )
+    return editor_mod.strip_comments(raw).strip()
 
 
 def _commit_deferred(ctx, message: str, index, opts) -> int:

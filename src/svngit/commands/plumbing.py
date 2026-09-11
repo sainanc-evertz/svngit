@@ -158,7 +158,7 @@ Working copy
    clone      svn checkout (descends into trunk by default)
    init       explains the Subversion equivalent; --standalone creates a repo
    status     svn status, rendered as git's two-column status
-   add        svn add for new files, plus svngit's staging area (-p works)
+   add        svn add for new files, plus svngit's staging area (-p, -e)
    rm / mv    svn delete / svn move
    restore    svn revert (or unstage with --staged)
    reset      unstage, undo a local commit (--soft), or svn revert (--hard)

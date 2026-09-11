@@ -45,6 +45,9 @@ class Context:
         #: Only read by interactive commands (`git add -p`); injectable so the
         #: prompt loop can be exercised without a terminal.
         self.stdin = stdin if stdin is not None else sys.stdin
+        #: Replaces the editor round trip (`git add -e`, `git commit`) when set.
+        #: Takes the initial text and returns the edited text.
+        self.edit_hook = None
         self.svn = SvnClient(
             cwd=str(self.cwd),
             binary=svn_binary,

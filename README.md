@@ -170,10 +170,14 @@ Nothing touches the server.
 because a Subversion working copy has nowhere to keep revisions it has not
 applied. `git pull` applies them.
 
-`git add -p` works, because the emulated index stores content rather than a
-flag: staging a hunk writes a blob that is neither BASE nor the worktree, and
-everything downstream already reads that blob. It supports `y n q a d s ?`;
-there is no `e` (manual hunk editing) or `j`/`k` navigation.
+`git add -p` and `git add -e` both work, because the emulated index stores
+content rather than a flag: staging part of a file writes a blob that is
+neither BASE nor the worktree, and everything downstream already reads that
+blob. `-p` supports `y n q a d s ?` (no `j`/`k` navigation). `-e` opens the
+whole diff in `$EDITOR` and stages whatever survives the edit -- including
+text that was never on disk, which is what that option is for. Hunk headers
+are recalculated on the way back in, so there is no need to fix the `@@`
+counts by hand, and a patch that fails to apply stages nothing at all.
 
 A queued local commit counts as part of what your working copy is based on.
 Subversion still calls such a file modified, since nothing has been pushed, but

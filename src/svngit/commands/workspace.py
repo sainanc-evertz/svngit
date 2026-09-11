@@ -181,13 +181,16 @@ def _incoming_count(ctx) -> int:
 def cmd_add(ctx, argv: List[str]) -> int:
     opts = parse(
         argv,
-        flags=["all", "A", "update", "u", "force", "f", "verbose", "v", "dry-run", "n", "patch", "p", "intent-to-add", "N"],
+        flags=["all", "A", "update", "u", "force", "f", "verbose", "v", "dry-run", "n", "patch", "p", "edit", "e", "intent-to-add", "N"],
     )
     stage_all = opts.has("all", "A")
     tracked_only = opts.has("update", "u")
     targets = opts.paths
 
-    if not targets and not (stage_all or tracked_only or opts.has("patch", "p")):
+    if opts.has("patch", "p") and opts.has("edit", "e"):
+        raise UsageError("-p and -e cannot be combined; -p picks hunks, -e edits the whole patch")
+
+    if not targets and not (stage_all or tracked_only or opts.has("patch", "p") or opts.has("edit", "e")):
         raise UsageError("nothing specified, nothing added.\nhint: maybe you wanted 'git add .'?")
 
     if targets == ["."] or targets == [":/"]:
@@ -197,12 +200,14 @@ def cmd_add(ctx, argv: List[str]) -> int:
     scope = ctx.to_wc_paths(targets) if targets else None
     report = status_mod.compute(ctx, scope)
 
-    if opts.has("patch", "p"):
-        from .interactive import stage_patch
+    if opts.has("patch", "p") or opts.has("edit", "e"):
+        from .interactive import stage_edit, stage_patch
 
-        # Untracked files have no hunks to choose between, so only mention
-        # them when the user named one explicitly.
+        # Untracked files have no diff to pick from, so only mention them when
+        # the user named one explicitly.
         chosen = report.entries if targets else [e for e in report.entries if not e.untracked]
+        if opts.has("edit", "e"):
+            return stage_edit(ctx, chosen)
         return stage_patch(ctx, chosen)
 
     staged_count = 0

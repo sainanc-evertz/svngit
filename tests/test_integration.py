@@ -10,6 +10,7 @@ Skipped automatically when svn/svnadmin are not installed.
 from __future__ import annotations
 
 import subprocess
+import sys
 
 from conftest import needs_svn
 
@@ -455,3 +456,92 @@ def test_immediate_mode_commits_the_staged_hunk_not_the_worktree(cli, svn_repo):
     assert "TWO" in on_server and "TEN" not in on_server
     # The unstaged change must survive the commit.
     assert "TEN" in (wc / "a.txt").read_text()
+
+
+def _run_edit(svn_repo, transform, cwd=None):
+    """Drive `git add -e` with a scripted edit of the patch."""
+    import io
+
+    from svngit.cli import dispatch
+    from svngit.context import Context
+
+    stdout, stderr = io.StringIO(), io.StringIO()
+    ctx = Context(cwd=cwd or svn_repo["wc"], stdout=stdout, stderr=stderr)
+    ctx.edit_hook = transform
+    code = dispatch(ctx, "add", ["-e"])
+    return code, stdout.getvalue(), stderr.getvalue()
+
+
+def test_add_edit_commits_only_the_kept_hunk(cli, svn_repo):
+    wc = svn_repo["wc"]
+    _seed(cli, wc)
+    (wc / "a.txt").write_text(PATCH_BASE.replace("two", "TWO").replace("ten", "TEN"))
+
+    drop_second = lambda text: "\n".join(
+        line for line in text.splitlines() if line not in ("-ten", "+TEN")
+    )
+    code, out, err = _run_edit(svn_repo, drop_second)
+    assert code == 0, err
+
+    cli("commit", "-m", "only the first change")
+    code, _, err = cli("push")
+    assert code == 0, err
+
+    on_server = svn("cat", svn_repo["url"] + "/trunk/a.txt")
+    assert "TWO" in on_server and "TEN" not in on_server
+    assert "TEN" in (wc / "a.txt").read_text()
+
+
+def test_add_edit_can_stage_text_that_is_not_on_disk(cli, svn_repo):
+    """The stated purpose of -e: stage something the working copy never held."""
+    wc = svn_repo["wc"]
+    _seed(cli, wc)
+    (wc / "a.txt").write_text(PATCH_BASE.replace("two", "TWO"))
+
+    rewrite = lambda text: text.replace("+TWO", "+REWRITTEN")
+    code, out, err = _run_edit(svn_repo, rewrite)
+    assert code == 0, err
+
+    cli("commit", "-m", "staged something else entirely")
+    assert cli("push")[0] == 0
+
+    assert "REWRITTEN" in svn("cat", svn_repo["url"] + "/trunk/a.txt")
+    assert "TWO" in (wc / "a.txt").read_text()  # disk is untouched
+
+
+def test_add_edit_with_a_real_editor_process(cli, svn_repo, tmp_path):
+    """Exercise the actual $EDITOR round trip, which the hook bypasses."""
+    import io
+    import os
+
+    from svngit.cli import dispatch
+    from svngit.context import Context
+
+    wc = svn_repo["wc"]
+    _seed(cli, wc)
+    (wc / "a.txt").write_text(PATCH_BASE.replace("two", "TWO").replace("ten", "TEN"))
+
+    script = tmp_path / "fake_editor.py"
+    script.write_text(
+        "import sys\n"
+        "path = sys.argv[1]\n"
+        "kept = [l for l in open(path).read().splitlines() if l not in ('-ten', '+TEN')]\n"
+        "open(path, 'w').write('\\n'.join(kept) + '\\n')\n"
+    )
+    previous = os.environ.get("GIT_EDITOR")
+    os.environ["GIT_EDITOR"] = "%s %s" % (sys.executable, script)
+    try:
+        stdout, stderr = io.StringIO(), io.StringIO()
+        ctx = Context(cwd=wc, stdout=stdout, stderr=stderr)
+        code = dispatch(ctx, "add", ["-e"])
+        assert code == 0, stderr.getvalue()
+    finally:
+        if previous is None:
+            os.environ.pop("GIT_EDITOR", None)
+        else:
+            os.environ["GIT_EDITOR"] = previous
+
+    cli("commit", "-m", "via a real editor")
+    assert cli("push")[0] == 0
+    on_server = svn("cat", svn_repo["url"] + "/trunk/a.txt")
+    assert "TWO" in on_server and "TEN" not in on_server
