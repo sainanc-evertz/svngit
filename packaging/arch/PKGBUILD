@@ -1,0 +1,58 @@
+# Maintainer: Sainan Chelvarajah <sainanc@evertz.com>
+#
+# Build and install locally:
+#
+#     cd packaging/arch && makepkg -si
+#
+# For the AUR, replace the local source with the release tarball and drop
+# the `sha256sums=('SKIP')` in favour of the real checksum.
+
+pkgname=svngit
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Run git commands against a Subversion repository"
+arch=('any')
+url="https://github.com/sainanc-evertz/svngit"
+license=('MIT')
+# subversion is a runtime dependency, not an optional one: svngit translates
+# git commands into svn commands and can do nothing without a client.
+depends=('python>=3.9' 'subversion')
+makedepends=('python-build' 'python-installer' 'python-setuptools' 'python-wheel')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+    cd "$srcdir/$pkgname-$pkgver"
+    python -m build --wheel --no-isolation
+}
+
+check() {
+    cd "$srcdir/$pkgname-$pkgver"
+    # The integration tests skip themselves when svn is absent, so this is
+    # safe in a clean chroot; with subversion installed they run for real.
+    PYTHONPATH="$PWD/src" python -m pytest -q
+}
+
+package() {
+    cd "$srcdir/$pkgname-$pkgver"
+    python -m installer --destdir="$pkgdir" dist/*.whl
+
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+    install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+    install -Dm644 docs/COMMANDS.md "$pkgdir/usr/share/doc/$pkgname/COMMANDS.md"
+
+    # Shell completions. The `git` shim is deliberately NOT placed in
+    # /usr/bin: that would shadow the real git system-wide. It stays in the
+    # package and users opt in with `svngit --shim-path`.
+    local py
+    py=$(python -c 'import sys; print("%d.%d" % sys.version_info[:2])')
+    PYTHONPATH="$pkgdir/usr/lib/python$py/site-packages" \
+        python -m svngit --completion bash |
+        install -Dm644 /dev/stdin "$pkgdir/usr/share/bash-completion/completions/svngit"
+    PYTHONPATH="$pkgdir/usr/lib/python$py/site-packages" \
+        python -m svngit --completion zsh |
+        install -Dm644 /dev/stdin "$pkgdir/usr/share/zsh/site-functions/_svngit"
+    PYTHONPATH="$pkgdir/usr/lib/python$py/site-packages" \
+        python -m svngit --completion fish |
+        install -Dm644 /dev/stdin "$pkgdir/usr/share/fish/vendor_completions.d/svngit.fish"
+}

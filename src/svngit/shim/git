@@ -5,6 +5,11 @@
 # always has -- except inside a Subversion working copy, where the command is
 # translated and run against Subversion instead.
 #
+#     export PATH="$(svngit --shim-path):$PATH"
+#
+# The directory is inside the installed package, so the line above works the
+# same whether svngit came from pip, pipx, Homebrew or a git checkout.
+#
 # Dispatch rules, in order:
 #   1. SVNGIT_DISABLE=1               -> always the real git
 #   2. a .git nearer than any .svn    -> the real git

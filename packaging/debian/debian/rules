@@ -1,0 +1,19 @@
+#!/usr/bin/make -f
+export PYBUILD_NAME=svngit
+
+%:
+	dh $@ --with python3 --buildsystem=pybuild
+
+# Ship the completions the package generates from its own command registry,
+# so they cannot drift from the commands that actually exist.
+override_dh_auto_install:
+	dh_auto_install
+	mkdir -p debian/svngit/usr/share/bash-completion/completions
+	mkdir -p debian/svngit/usr/share/zsh/vendor-completions
+	mkdir -p debian/svngit/usr/share/fish/vendor_completions.d
+	PYTHONPATH=src python3 -m svngit --completion bash \
+	    > debian/svngit/usr/share/bash-completion/completions/svngit
+	PYTHONPATH=src python3 -m svngit --completion zsh \
+	    > debian/svngit/usr/share/zsh/vendor-completions/_svngit
+	PYTHONPATH=src python3 -m svngit --completion fish \
+	    > debian/svngit/usr/share/fish/vendor_completions.d/svngit.fish

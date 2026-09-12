@@ -1,0 +1,31 @@
+Source: svngit
+Section: vcs
+Priority: optional
+Maintainer: Sainan Chelvarajah <sainanc@evertz.com>
+Build-Depends: debhelper-compat (= 13),
+               dh-python,
+               python3-all,
+               python3-setuptools,
+               python3-pytest <!nocheck>
+Standards-Version: 4.6.2
+Homepage: https://github.com/sainanc-evertz/svngit
+Rules-Requires-Root: no
+
+Package: svngit
+Architecture: all
+Depends: ${python3:Depends},
+         ${misc:Depends},
+         subversion
+Description: run git commands against a Subversion repository
+ svngit sits between you and a Subversion working copy. You run git status,
+ git add, git commit and git push; it translates each one into the equivalent
+ svn command, runs it, and prints the result the way git would have.
+ .
+ Nothing about the repository changes: colleagues keep using svn, the server
+ stays a Subversion server, and there is no mirror or import step. It emulates
+ the parts Subversion has no counterpart for -- a staging area, a queue of
+ unpushed commits, and a stash -- in state kept outside the working copy.
+ .
+ A shim is included so that plain "git" works inside Subversion checkouts. It
+ is not installed into the PATH by default, because that would shadow the real
+ git; run "svngit --shim-path" to opt in.
