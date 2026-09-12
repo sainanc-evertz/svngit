@@ -13,17 +13,23 @@ and are surfaced rather than hidden:
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import fnmatch
 from typing import List, Optional
 
 from .. import formatting, layout as layout_mod, status as status_mod
+from ..svnclient import SvnInfo
 from ..cliargs import no_effect, parse, refuse
 from ..errors import SvnGitError, UsageError
 from ..layout import TRUNK_BRANCH_NAME
 from .. import revisions as rev_mod
 
+if TYPE_CHECKING:  # pragma: no cover
+    from ..context import Context
 
-def _after_server_commit(ctx) -> None:
+
+def _after_server_commit(ctx: "Context") -> None:
     """Catch the working copy up after a server-side copy, move or delete.
 
     Creating a branch or a tag is a commit, so the repository moves on while
@@ -35,7 +41,7 @@ def _after_server_commit(ctx) -> None:
     _refresh_base_revision(ctx)
 
 
-def _require_empty_queue(ctx, verb: str) -> None:
+def _require_empty_queue(ctx: "Context", verb: str) -> None:
     pending = ctx.state.commits
     if pending:
         raise SvnGitError(
@@ -52,7 +58,7 @@ def _require_empty_queue(ctx, verb: str) -> None:
         )
 
 
-def _require_clean_tree(ctx, verb: str) -> None:
+def _require_clean_tree(ctx: "Context", verb: str) -> None:
     report = status_mod.compute(ctx)
     dirty = [e for e in report.entries if not e.untracked and not e.ignored]
     if dirty:
@@ -66,7 +72,7 @@ def _require_clean_tree(ctx, verb: str) -> None:
 # ----------------------------------------------------------------------
 # branch
 # ----------------------------------------------------------------------
-def cmd_branch(ctx, argv: List[str]) -> int:
+def cmd_branch(ctx: "Context", argv: List[str]) -> int:
     opts = parse(
         argv,
         flags=[
@@ -138,7 +144,9 @@ def cmd_branch(ctx, argv: List[str]) -> int:
     return 0
 
 
-def _is_merged(ctx, info, lay, name: str, into: str = "") -> bool:
+def _is_merged(
+    ctx: "Context", info: SvnInfo, lay: layout_mod.Layout, name: str, into: str = ""
+) -> bool:
     """Whether every revision on `name` is already merged into `into`.
 
     Subversion answers this directly: `svn mergeinfo --show-revs eligible`
@@ -155,7 +163,7 @@ def _is_merged(ctx, info, lay, name: str, into: str = "") -> bool:
 
 
 def _copy_branch(
-    ctx, new_name: str, positionals: List[str], quiet: bool = False
+    ctx: "Context", new_name: str, positionals: List[str], quiet: bool = False
 ) -> int:
     """`git branch -c`: another server-side copy, like creating one."""
     info, lay = ctx.info, ctx.layout
@@ -179,7 +187,7 @@ def _copy_branch(
 
 
 def _create_branch(
-    ctx, name: str, start_point: Optional[str] = None, quiet: bool = False
+    ctx: "Context", name: str, start_point: Optional[str] = None, quiet: bool = False
 ) -> str:
     info, lay = ctx.info, ctx.layout
     target = layout_mod.branch_url(info, lay, name)
@@ -204,7 +212,7 @@ def _create_branch(
     return target
 
 
-def _delete_branch(ctx, name: str, force: bool = False) -> int:
+def _delete_branch(ctx: "Context", name: str, force: bool = False) -> int:
     info, lay = ctx.info, ctx.layout
     if name == ctx.branch:
         raise SvnGitError("cannot delete branch '%s': you are currently on it" % name)
@@ -217,7 +225,7 @@ def _delete_branch(ctx, name: str, force: bool = False) -> int:
     return 0
 
 
-def _rename_branch(ctx, new_name: str, positionals: List[str]) -> int:
+def _rename_branch(ctx: "Context", new_name: str, positionals: List[str]) -> int:
     info, lay = ctx.info, ctx.layout
     old_name = positionals[0] if positionals else ctx.branch
     if old_name == TRUNK_BRANCH_NAME:
@@ -239,7 +247,7 @@ def _rename_branch(ctx, new_name: str, positionals: List[str]) -> int:
     return 0
 
 
-def delete_remote_ref(ctx, positionals: List[str]) -> int:
+def delete_remote_ref(ctx: "Context", positionals: List[str]) -> int:
     """`git push --delete <branch>`; Subversion has only remote branches."""
     names = [p for p in positionals if p not in ("origin",)]
     if not names:
@@ -252,7 +260,7 @@ def delete_remote_ref(ctx, positionals: List[str]) -> int:
 # ----------------------------------------------------------------------
 # checkout / switch
 # ----------------------------------------------------------------------
-def cmd_checkout(ctx, argv: List[str]) -> int:
+def cmd_checkout(ctx: "Context", argv: List[str]) -> int:
     opts = parse(
         argv,
         flags=[
@@ -327,7 +335,7 @@ def cmd_checkout(ctx, argv: List[str]) -> int:
     return _switch_to(ctx, name, force=opts.has("force", "f"), quiet=quiet)
 
 
-def _detach(ctx, positionals: List[str], quiet: bool = False) -> int:
+def _detach(ctx: "Context", positionals: List[str], quiet: bool = False) -> int:
     """`git checkout --detach <rev>`: sit at a revision rather than a branch.
 
     The Subversion equivalent is an out-of-date working copy, which is exactly
@@ -347,7 +355,7 @@ def _detach(ctx, positionals: List[str], quiet: bool = False) -> int:
     return 0
 
 
-def cmd_switch(ctx, argv: List[str]) -> int:
+def cmd_switch(ctx: "Context", argv: List[str]) -> int:
     opts = parse(
         argv,
         flags=["create", "c", "force", "f", "quiet", "q", "detach"],
@@ -368,7 +376,9 @@ def cmd_switch(ctx, argv: List[str]) -> int:
     return _switch_to(ctx, name, force=opts.has("force", "f"), quiet=quiet)
 
 
-def _switch_to(ctx, name: str, force: bool = False, quiet: bool = False) -> int:
+def _switch_to(
+    ctx: "Context", name: str, force: bool = False, quiet: bool = False
+) -> int:
     info, lay = ctx.info, ctx.layout
     _require_empty_queue(ctx, "switching branches")
 
@@ -402,14 +412,14 @@ def _switch_to(ctx, name: str, force: bool = False, quiet: bool = False) -> int:
     return 0
 
 
-def _looks_like_path(ctx, name: str) -> bool:
+def _looks_like_path(ctx: "Context", name: str) -> bool:
     return (ctx.cwd / name).exists()
 
 
 # ----------------------------------------------------------------------
 # merge
 # ----------------------------------------------------------------------
-def cmd_merge(ctx, argv: List[str]) -> int:
+def cmd_merge(ctx: "Context", argv: List[str]) -> int:
     opts = parse(
         argv,
         flags=["no-commit", "n", "abort", "squash", "ff", "no-ff", "quiet", "q"],
@@ -479,7 +489,7 @@ def cmd_merge(ctx, argv: List[str]) -> int:
     return _commit_merge(ctx, message, quiet=opts.has("quiet", "q"))
 
 
-def _commit_merge(ctx, message: str, quiet: bool = False) -> int:
+def _commit_merge(ctx: "Context", message: str, quiet: bool = False) -> int:
     """Commit a merge straight to Subversion, root included.
 
     The root has to be in the commit: `svn merge` records svn:mergeinfo there,
@@ -504,7 +514,7 @@ def _commit_merge(ctx, message: str, quiet: bool = False) -> int:
 # ----------------------------------------------------------------------
 # cherry-pick / revert
 # ----------------------------------------------------------------------
-def cmd_cherry_pick(ctx, argv: List[str]) -> int:
+def cmd_cherry_pick(ctx: "Context", argv: List[str]) -> int:
     opts = parse(
         argv,
         flags=["no-commit", "n", "abort", "continue", "x", "quiet", "q"],
@@ -563,7 +573,7 @@ def cmd_cherry_pick(ctx, argv: List[str]) -> int:
     return _commit_merge(ctx, message, quiet=opts.has("quiet", "q"))
 
 
-def cmd_revert(ctx, argv: List[str]) -> int:
+def cmd_revert(ctx: "Context", argv: List[str]) -> int:
     """git revert -- undo a revision with a new one.
 
     Note this is *not* `svn revert`, which throws away local edits; that is
@@ -620,7 +630,7 @@ def cmd_revert(ctx, argv: List[str]) -> int:
     return _commit_merge(ctx, message, quiet=opts.has("quiet", "q"))
 
 
-def _source_url_for_revision(ctx, revision: int) -> str:
+def _source_url_for_revision(ctx: "Context", revision: int) -> str:
     """Which branch URL a revision's changes live on.
 
     Cherry-pick needs a merge source, and svn only takes a URL. Reading the
@@ -640,7 +650,9 @@ def _source_url_for_revision(ctx, revision: int) -> str:
 # ----------------------------------------------------------------------
 # tag
 # ----------------------------------------------------------------------
-def _tag_contains(ctx, info, lay, name: str, revision: int) -> bool:
+def _tag_contains(
+    ctx: "Context", info: SvnInfo, lay: layout_mod.Layout, name: str, revision: int
+) -> bool:
     """Whether a tag was cut from a revision at or after `revision`.
 
     A Subversion tag is a directory copy, so the revision it was copied from
@@ -656,7 +668,7 @@ def _tag_contains(ctx, info, lay, name: str, revision: int) -> bool:
     return entries[0].revision >= revision
 
 
-def cmd_tag(ctx, argv: List[str]) -> int:
+def cmd_tag(ctx: "Context", argv: List[str]) -> int:
     opts = parse(
         argv,
         flags=["annotate", "a", "list", "l", "force", "f", "sign", "s", "n"],

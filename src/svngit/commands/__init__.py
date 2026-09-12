@@ -6,7 +6,7 @@ their gitconfig, so muscle memory keeps working.
 
 from __future__ import annotations
 
-from typing import Callable, Dict, NamedTuple, Optional
+from typing import TYPE_CHECKING, Callable, Dict, List, NamedTuple, Optional
 
 from . import (
     branching,
@@ -20,9 +20,12 @@ from . import (
     workspace,
 )
 
+if TYPE_CHECKING:  # pragma: no cover
+    from ..context import Context
+
 
 class Command(NamedTuple):
-    run: Callable
+    run: Callable[["Context", List[str]], int]
     #: False for commands that create a working copy rather than act on one.
     needs_working_copy: bool = True
 

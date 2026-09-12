@@ -15,7 +15,7 @@ import re
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 STATE_VERSION = 1
 
@@ -97,7 +97,7 @@ class StashEntry:
     #: Untracked files captured with `git stash -u`: [{"path": ..., "blob": ...}]
     untracked: List[Dict[str, str]] = field(default_factory=list)
     #: Index contents at stash time, so `stash pop` can restore staging.
-    index: Dict[str, Dict] = field(default_factory=dict)
+    index: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     #: Set only by `git stash -p`, as [{"path", "full", "kept"}] -- the content
     #: before stashing and the content left behind. Its presence is what marks
     #: an entry as partial, which `pop` restores differently.
@@ -156,7 +156,7 @@ class State:
     def _file(self) -> Path:
         return self.dir / "state.json"
 
-    def _load(self) -> dict:
+    def _load(self) -> Dict[str, Any]:
         if not self._file.exists():
             return {
                 "version": STATE_VERSION,
@@ -167,7 +167,7 @@ class State:
                 "wc_root": str(self.wc_root),
             }
         with self._file.open("r", encoding="utf-8") as handle:
-            data = json.load(handle)
+            data: Dict[str, Any] = json.load(handle)
         data.setdefault("index", {})
         data.setdefault("commits", [])
         data.setdefault("stash", [])
@@ -292,7 +292,7 @@ class State:
     def unset_config(self, key: str) -> bool:
         return self._data["config"].pop(key, None) is not None
 
-    def get_config(self, key: str, default=None):
+    def get_config(self, key: str, default: Any = None) -> Any:
         return self._data["config"].get(key, default)
 
 

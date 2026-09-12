@@ -6,7 +6,8 @@ from __future__ import annotations
 import difflib
 import sys
 from pathlib import Path
-from typing import List, Optional, Sequence
+from dataclasses import dataclass
+from typing import List, Optional, Sequence, Tuple
 
 from . import commands, completion
 from .commands import NO_EQUIVALENT, REGISTRY
@@ -15,44 +16,49 @@ from .errors import NotAWorkingCopy, SvnGitError, UsageError
 from .shim import shim_directory
 
 
-def _split_global_options(argv: Sequence[str]):
+@dataclass
+class GlobalOptions:
+    """The options that may appear before the subcommand name."""
+
+    dry_run: bool = False
+    trace: bool = False
+    cwd: Optional[str] = None
+    help: bool = False
+    version: bool = False
+    shim_path: bool = False
+    completion: Optional[str] = None
+
+
+def _split_global_options(argv: Sequence[str]) -> Tuple[GlobalOptions, List[str]]:
     """Pull out the options that appear before the subcommand."""
-    options = {
-        "dry_run": False,
-        "trace": False,
-        "cwd": None,
-        "help": False,
-        "version": False,
-        "shim_path": False,
-        "completion": None,
-    }
+    options = GlobalOptions()
     rest = list(argv)
     while rest:
         arg = rest[0]
         if arg == "--dry-run":
-            options["dry_run"] = True
+            options.dry_run = True
         elif arg == "--trace":
-            options["trace"] = True
+            options.trace = True
         elif arg in ("--help", "-h", "--svngit-help"):
-            options["help"] = True
+            options.help = True
         elif arg == "--version":
-            options["version"] = True
+            options.version = True
         elif arg == "--shim-path":
-            options["shim_path"] = True
+            options.shim_path = True
         elif arg == "--completion":
             rest.pop(0)
             if not rest:
                 raise UsageError(
                     "--completion needs a shell (%s)" % ", ".join(completion.SHELLS)
                 )
-            options["completion"] = rest[0]
+            options.completion = rest[0]
         elif arg in ("--no-pager", "--paginate", "-p", "--bare"):
             pass  # accepted and ignored: svngit never spawns a pager
         elif arg in ("-C", "--directory"):
             rest.pop(0)
             if not rest:
                 raise UsageError("-C requires a directory")
-            options["cwd"] = rest[0]
+            options.cwd = rest[0]
         elif arg.startswith("-c") and len(arg) > 2:
             pass  # `git -c key=value`: svngit has no transient config
         else:
@@ -71,26 +77,26 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     # Setup options answer before any working copy is needed, so they work
     # from anywhere -- which is the point of them.
-    if options["shim_path"]:
+    if options.shim_path:
         print(shim_directory())
         return 0
-    if options["completion"]:
+    if options.completion:
         try:
-            print(completion.generate(options["completion"]), end="")
+            print(completion.generate(options.completion), end="")
         except ValueError as exc:
             print("fatal: %s" % exc, file=sys.stderr)
             return 129
         return 0
 
     ctx = Context(
-        cwd=Path(options["cwd"]).expanduser() if options["cwd"] else None,
-        dry_run=options["dry_run"],
-        trace=options["trace"],
+        cwd=Path(options.cwd).expanduser() if options.cwd else None,
+        dry_run=options.dry_run,
+        trace=options.trace,
     )
 
-    if options["version"] and not rest:
+    if options.version and not rest:
         rest = ["version"]
-    if options["help"] and not rest:
+    if options.help and not rest:
         rest = ["help"]
     if not rest:
         rest = ["help"]
@@ -98,7 +104,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     name = rest[0]
     args = rest[1:]
 
-    if options["help"] and name not in ("help", "version"):
+    if options.help and name not in ("help", "version"):
         # `git <cmd> --help` and `git --help <cmd>` both mean "explain this".
         args = list(args) + ["--help"]
 

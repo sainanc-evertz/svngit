@@ -4,20 +4,24 @@ from __future__ import annotations
 
 import fnmatch
 import re
-from typing import Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
-from .. import colour as colour_mod, formatting, patch as patch_mod
+from .. import colour as colour_mod, formatting, layout as layout_mod
+from .. import patch as patch_mod
 from .. import revisions as rev_mod, status as status_mod
-from ..cliargs import no_effect, parse, refuse, split_revisions_and_paths
+from ..cliargs import Options, no_effect, parse, refuse, split_revisions_and_paths
 from ..errors import SvnGitError, UsageError
 from ..state import ADD, DELETE
-from ..svnclient import parse_svn_date
+from ..svnclient import LogEntry, SvnInfo, parse_svn_date
+
+if TYPE_CHECKING:  # pragma: no cover
+    from ..context import Context
 
 
 # ----------------------------------------------------------------------
 # log
 # ----------------------------------------------------------------------
-def cmd_log(ctx, argv: List[str]) -> int:
+def cmd_log(ctx: "Context", argv: List[str]) -> int:
     opts = parse(
         argv,
         flags=[
@@ -128,7 +132,9 @@ def cmd_log(ctx, argv: List[str]) -> int:
     return 0
 
 
-def _pickaxe(ctx, entries, opts, target: str):
+def _pickaxe(
+    ctx: "Context", entries: List[LogEntry], opts: Options, target: str
+) -> List[LogEntry]:
     """Filter revisions by what their diff contains.
 
     `svn log --search` matches the commit message only, so -S and -G have to
@@ -172,7 +178,9 @@ def _pickaxe(ctx, entries, opts, target: str):
     return kept
 
 
-def _log_range(ctx, revisions: List[str], target: str, opts) -> Optional[str]:
+def _log_range(
+    ctx: "Context", revisions: List[str], target: str, opts: Options
+) -> Optional[str]:
     if revisions:
         return rev_mod.to_svn_range(ctx, revisions[0], target)
     since = opts.first("since", "after")
@@ -187,7 +195,7 @@ def _log_range(ctx, revisions: List[str], target: str, opts) -> Optional[str]:
 # ----------------------------------------------------------------------
 # show
 # ----------------------------------------------------------------------
-def cmd_show(ctx, argv: List[str]) -> int:
+def cmd_show(ctx: "Context", argv: List[str]) -> int:
     opts = parse(
         argv,
         flags=["stat", "name-only", "name-status", "oneline", "quiet", "s", "no-color"],
@@ -225,7 +233,7 @@ def cmd_show(ctx, argv: List[str]) -> int:
 # ----------------------------------------------------------------------
 # diff
 # ----------------------------------------------------------------------
-def cmd_diff(ctx, argv: List[str]) -> int:
+def cmd_diff(ctx: "Context", argv: List[str]) -> int:
     opts = parse(
         argv,
         flags=[
@@ -282,7 +290,7 @@ def cmd_diff(ctx, argv: List[str]) -> int:
     return _emit_diff(ctx, _worktree_diff(ctx, wc_paths), opts)
 
 
-def _staged_diff(ctx, wc_paths: Optional[List[str]]) -> str:
+def _staged_diff(ctx: "Context", wc_paths: Optional[List[str]]) -> str:
     """index vs BASE: compare each staged blob against its pristine copy."""
     chunks: List[str] = []
     for path, entry in sorted(ctx.state.index.items()):
@@ -309,7 +317,7 @@ def _staged_diff(ctx, wc_paths: Optional[List[str]]) -> str:
     return "\n".join(chunks) + ("\n" if chunks else "")
 
 
-def _worktree_diff(ctx, wc_paths: Optional[List[str]]) -> str:
+def _worktree_diff(ctx: "Context", wc_paths: Optional[List[str]]) -> str:
     """worktree vs index: staged paths compare against their staged blob,
     everything else against BASE (which is what svn diff already gives)."""
     index = ctx.state.index
@@ -350,7 +358,7 @@ def _worktree_diff(ctx, wc_paths: Optional[List[str]]) -> str:
     return text
 
 
-def _emit_diff(ctx, diff_text: str, opts) -> int:
+def _emit_diff(ctx: "Context", diff_text: str, opts: Options) -> int:
     if not diff_text.strip():
         return 0
 
@@ -426,7 +434,7 @@ def _status_letter(body: str) -> str:
 # ----------------------------------------------------------------------
 # blame
 # ----------------------------------------------------------------------
-def _line_range(spec) -> Tuple[int, Optional[int]]:
+def _line_range(spec: Optional[object]) -> Tuple[int, Optional[int]]:
     """Parse git's `-L <start>,<end>`. Either end may be omitted."""
     if not spec:
         return 1, None
@@ -442,7 +450,7 @@ def _line_range(spec) -> Tuple[int, Optional[int]]:
     return max(first, 1), last
 
 
-def cmd_blame(ctx, argv: List[str]) -> int:
+def cmd_blame(ctx: "Context", argv: List[str]) -> int:
     opts = parse(
         argv,
         flags=["line-porcelain", "porcelain", "s", "w"],
@@ -513,7 +521,7 @@ def cmd_blame(ctx, argv: List[str]) -> int:
 # ----------------------------------------------------------------------
 # shortlog
 # ----------------------------------------------------------------------
-def cmd_shortlog(ctx, argv: List[str]) -> int:
+def cmd_shortlog(ctx: "Context", argv: List[str]) -> int:
     """Group the log by author, as `git shortlog` does."""
     opts = parse(
         argv,
@@ -581,14 +589,13 @@ def cmd_shortlog(ctx, argv: List[str]) -> int:
 # ----------------------------------------------------------------------
 # describe
 # ----------------------------------------------------------------------
-def cmd_describe(ctx, argv: List[str]) -> int:
+def cmd_describe(ctx: "Context", argv: List[str]) -> int:
     """Name a revision after the most recent tag that precedes it.
 
     A Subversion tag is a directory copied from some revision, so "the tag
     this revision descends from" is the newest tag whose copy source is at or
     before it.
     """
-    from .. import layout as layout_mod
 
     opts = parse(
         argv,
@@ -649,8 +656,9 @@ def cmd_describe(ctx, argv: List[str]) -> int:
     return 0
 
 
-def _tag_source_revision(ctx, info, lay, name: str) -> Optional[int]:
-    from .. import layout as layout_mod
+def _tag_source_revision(
+    ctx: "Context", info: SvnInfo, lay: layout_mod.Layout, name: str
+) -> Optional[int]:
 
     url = layout_mod.tag_url(info, lay, name)
     entries = ctx.svn.log(url, limit=1, stop_on_copy=True, verbose=True)
@@ -662,7 +670,7 @@ def _tag_source_revision(ctx, info, lay, name: str) -> Optional[int]:
     return entries[0].revision
 
 
-def _revisions_between(ctx, start: int, end: int) -> int:
+def _revisions_between(ctx: "Context", start: int, end: int) -> int:
     """How many revisions touched this branch between two points."""
     if end <= start:
         return 0
@@ -670,7 +678,7 @@ def _revisions_between(ctx, start: int, end: int) -> int:
     return len(entries)
 
 
-def _dirty_suffix(ctx) -> str:
+def _dirty_suffix(ctx: "Context") -> str:
     report = status_mod.compute(ctx)
     return (
         "-dirty"
@@ -682,6 +690,6 @@ def _dirty_suffix(ctx) -> str:
 # ----------------------------------------------------------------------
 # whatchanged
 # ----------------------------------------------------------------------
-def cmd_whatchanged(ctx, argv: List[str]) -> int:
+def cmd_whatchanged(ctx: "Context", argv: List[str]) -> int:
     """git's older spelling of `log --raw`; here, log with the paths shown."""
     return cmd_log(ctx, list(argv) + ["--name-status"])

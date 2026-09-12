@@ -10,9 +10,12 @@ import os
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from .errors import UsageError
+
+if TYPE_CHECKING:  # pragma: no cover
+    from .context import Context
 
 #: Same precedence git uses.
 EDITOR_VARIABLES = ("GIT_EDITOR", "SVN_EDITOR", "VISUAL", "EDITOR")
@@ -26,11 +29,13 @@ def find_editor() -> Optional[str]:
     return None
 
 
-def edit_text(ctx, initial: str, suffix: str = ".txt", what: str = "text") -> str:
+def edit_text(
+    ctx: "Context", initial: str, suffix: str = ".txt", what: str = "text"
+) -> str:
     """Open `initial` in the editor and return what came back."""
     hook = getattr(ctx, "edit_hook", None)
     if hook is not None:
-        return hook(initial)
+        return str(hook(initial))
 
     editor = find_editor()
     if not editor:

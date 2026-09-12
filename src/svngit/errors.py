@@ -21,7 +21,7 @@ class UsageError(SvnGitError):
 class NotAWorkingCopy(SvnGitError):
     exit_code = 128
 
-    def __init__(self, path):
+    def __init__(self, path: str) -> None:
         super().__init__(
             "not a subversion working copy (or any parent up to mount point): %s" % path
         )

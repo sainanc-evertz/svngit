@@ -12,10 +12,13 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
-from .state import ADD, DELETE, MODIFY
+from .state import ADD, DELETE, MODIFY, IndexEntry
 from .svnclient import StatusEntry
+
+if TYPE_CHECKING:  # pragma: no cover
+    from .context import Context
 
 UNTRACKED = "?"
 IGNORED = "!"
@@ -98,7 +101,7 @@ def _worktree_matches_index(abs_path: Path, staged_blob: Optional[str]) -> bool:
 
 
 def compute(
-    ctx, paths: Optional[List[str]] = None, include_ignored: bool = False
+    ctx: "Context", paths: Optional[List[str]] = None, include_ignored: bool = False
 ) -> StatusReport:
     """Build the two-column status for the working copy."""
     targets = [ctx.svn_target(p) for p in paths] if paths else [str(ctx.wc_root)]
@@ -132,7 +135,7 @@ def compute(
     # A path can be staged as a modification while svn calls it unmodified --
     # for instance when the user staged it and then reverted the edit by hand.
     # Keep it visible so `git reset` has something to act on.
-    for wc_path, entry in index.items():
+    for wc_path, staged in index.items():
         if wc_path in by_path:
             continue
         if paths and not any(
@@ -140,18 +143,27 @@ def compute(
         ):
             continue
         abs_path = ctx.abs_path(wc_path)
-        worktree = CLEAN if _worktree_matches_index(abs_path, entry.blob) else "M"
-        by_path[wc_path] = FileStatus(wc_path, entry.action, worktree)
+        worktree = CLEAN if _worktree_matches_index(abs_path, staged.blob) else "M"
+        by_path[wc_path] = FileStatus(wc_path, staged.action, worktree)
 
     report = StatusReport(entries=[by_path[k] for k in sorted(by_path)])
     return report
 
 
-#: Sentinel: this path is not explained by a queued local commit.
-_NOT_LOCAL = object()
+class _NotLocal:
+    """Sentinel: this path is not explained by a queued local commit.
+
+    A class rather than `object()` so the function returning it can say so in
+    its signature instead of widening the return type to `object`.
+    """
 
 
-def _against_local_commit(wc_path, abs_path, committed, item):
+_NOT_LOCAL = _NotLocal()
+
+
+def _against_local_commit(
+    wc_path: str, abs_path: Path, committed: Optional[str], item: str
+) -> Union[FileStatus, None, _NotLocal]:
     """Compare a path against the local commit that last touched it.
 
     Subversion still calls the path modified, because nothing has been pushed.
@@ -169,7 +181,11 @@ def _against_local_commit(wc_path, abs_path, committed, item):
 
 
 def _translate_entry(
-    ctx, entry: StatusEntry, staged, wc_path: str, queued=None
+    ctx: "Context",
+    entry: StatusEntry,
+    staged: Optional[IndexEntry],
+    wc_path: str,
+    queued: Optional[Dict[str, Optional[str]]] = None,
 ) -> Optional[FileStatus]:
     item = entry.item
     props_modified = entry.props in ("modified", "conflicted")
@@ -177,7 +193,7 @@ def _translate_entry(
 
     if staged is None and queued and wc_path in queued:
         resolved = _against_local_commit(wc_path, abs_path, queued[wc_path], item)
-        if resolved is not _NOT_LOCAL:
+        if not isinstance(resolved, _NotLocal):
             return resolved
 
     if item == "unversioned":

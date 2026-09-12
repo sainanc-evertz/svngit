@@ -16,6 +16,8 @@ file with a single cursor.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Union
+
 import re
 from dataclasses import dataclass
 from typing import List, Optional
@@ -25,6 +27,9 @@ from .. import hunks as hunks_mod
 from .. import patch as patch_mod
 from ..state import ADD, MODIFY
 from ..status import FileStatus
+
+if TYPE_CHECKING:  # pragma: no cover
+    from ..context import Context
 
 HELP = """\
 y - stage this hunk
@@ -70,7 +75,7 @@ INSTRUCTIONS = """\
 QUIT = "q"
 
 
-def _read_line(ctx) -> Optional[str]:
+def _read_line(ctx: "Context") -> Optional[str]:
     """Read one answer, keeping piped output as readable as interactive output.
 
     A terminal echoes the user's keystroke and newline; a pipe does not, so
@@ -84,8 +89,16 @@ def _read_line(ctx) -> Optional[str]:
     return line
 
 
+class _EditRetry:
+    """Sentinel: the edit did not apply, so the user should be asked again.
+
+    A class rather than `object()`, so the function returning it can name it
+    in its signature instead of widening the return type to `object`.
+    """
+
+
 #: Returned by _edit_hunk when the edit did not apply and should be retried.
-_EDIT_RETRY = object()
+_EDIT_RETRY = _EditRetry()
 
 
 @dataclass
@@ -101,7 +114,7 @@ class Selection:
 class _Item:
     """One hunk on screen, and what the user has decided about it."""
 
-    hunk: object
+    hunk: hunks_mod.Hunk
     #: None while undecided; True staged; False skipped.
     decision: Optional[bool] = None
     #: Set when the hunk was accepted through `e`, replacing the original.
@@ -111,7 +124,7 @@ class _Item:
 # ----------------------------------------------------------------------
 # shared
 # ----------------------------------------------------------------------
-def effective_base(ctx, entry: FileStatus, use_index: bool = True) -> bytes:
+def effective_base(ctx: "Context", entry: FileStatus, use_index: bool = True) -> bytes:
     """What the worktree is being compared against.
 
     In order of precedence: the staged blob (git diffs index to worktree), then
@@ -137,7 +150,7 @@ def effective_base(ctx, entry: FileStatus, use_index: bool = True) -> bytes:
     ).stdout.encode("utf-8")
 
 
-def _stage_blob(ctx, entry: FileStatus, content: str) -> None:
+def _stage_blob(ctx: "Context", entry: FileStatus, content: str) -> None:
     existing = ctx.state.index.get(entry.path)
     blob = ctx.state.objects.write(content.encode("utf-8"))
     action = entry.index if entry.index in (ADD, "R") else MODIFY
@@ -150,7 +163,7 @@ def _stage_blob(ctx, entry: FileStatus, content: str) -> None:
 # ----------------------------------------------------------------------
 # git add -p
 # ----------------------------------------------------------------------
-def stage_patch(ctx, entries: List[FileStatus]) -> int:
+def stage_patch(ctx: "Context", entries: List[FileStatus]) -> int:
     """Walk the modified files hunk by hunk. Returns a process exit code."""
     for entry in entries:
         if entry.ignored or entry.unmerged:
@@ -168,7 +181,7 @@ def stage_patch(ctx, entries: List[FileStatus]) -> int:
     return 0
 
 
-def _stage_one_file(ctx, entry: FileStatus) -> Optional[bool]:
+def _stage_one_file(ctx: "Context", entry: FileStatus) -> Optional[bool]:
     """Returns True/False for staged-something, or None if the user quit."""
     absolute = ctx.abs_path(entry.path)
     if not absolute.is_file():
@@ -221,7 +234,11 @@ def _stage_one_file(ctx, entry: FileStatus) -> Optional[bool]:
 
 
 def select_hunks(
-    ctx, diff, base_text: str, path: str, prompt: str = "Stage this hunk"
+    ctx: "Context",
+    diff: hunks_mod.FileDiff,
+    base_text: str,
+    path: str,
+    prompt: str = "Stage this hunk",
 ) -> Selection:
     """Walk one file's hunks, returning what the user chose.
 
@@ -268,7 +285,7 @@ def select_hunks(
             ctx.echo("Split into %d hunks." % len(pieces))
         elif answer == "e":
             edited = _edit_hunk(ctx, diff, item.hunk, path, base_text, queue, position)
-            if edited is _EDIT_RETRY or edited is None:
+            if isinstance(edited, _EditRetry) or edited is None:
                 continue  # stay on this hunk, still undecided
             item.edited = edited
             item.decision = True
@@ -287,7 +304,9 @@ def select_hunks(
     )
 
 
-def _hunks_where(diff, queue: List[_Item], chosen: bool) -> List[patch_mod.PatchHunk]:
+def _hunks_where(
+    diff: hunks_mod.FileDiff, queue: List[_Item], chosen: bool
+) -> List[patch_mod.PatchHunk]:
     """Hunks in file order, either the chosen ones or everything else.
 
     Order matters and answer order will not do: navigation lets a later hunk be
@@ -323,7 +342,7 @@ def _next_undecided(queue: List[_Item], position: int) -> Optional[int]:
     return None
 
 
-def _navigate(ctx, queue: List[_Item], position: int, answer: str) -> int:
+def _navigate(ctx: "Context", queue: List[_Item], position: int, answer: str) -> int:
     if answer == "J":
         if position + 1 < len(queue):
             return position + 1
@@ -345,7 +364,9 @@ def _navigate(ctx, queue: List[_Item], position: int, answer: str) -> int:
     return position
 
 
-def _goto(ctx, diff, queue: List[_Item], position: int) -> int:
+def _goto(
+    ctx: "Context", diff: hunks_mod.FileDiff, queue: List[_Item], position: int
+) -> int:
     if len(queue) < 2:
         ctx.echo("Only one hunk to go to")
         return position
@@ -379,7 +400,7 @@ def _mark(item: _Item) -> str:
     return " "
 
 
-def _summary(diff, item: _Item) -> str:
+def _summary(diff: hunks_mod.FileDiff, item: _Item) -> str:
     """The hunk's header plus its first changed line, for the `g` listing."""
     rendered = diff.render(item.hunk)
     preview = next(
@@ -389,7 +410,9 @@ def _summary(diff, item: _Item) -> str:
     return "%-18s %s" % (item.hunk.header.strip("@ "), preview)
 
 
-def _search(ctx, diff, queue: List[_Item], position: int) -> int:
+def _search(
+    ctx: "Context", diff: hunks_mod.FileDiff, queue: List[_Item], position: int
+) -> int:
     ctx.stdout.write("search for regex? ")
     ctx.stdout.flush()
     line = _read_line(ctx)
@@ -413,7 +436,15 @@ def _search(ctx, diff, queue: List[_Item], position: int) -> int:
 # ----------------------------------------------------------------------
 # per-hunk edit
 # ----------------------------------------------------------------------
-def _edit_hunk(ctx, diff, hunk, path, base_text, queue, position):
+def _edit_hunk(
+    ctx: "Context",
+    diff: hunks_mod.FileDiff,
+    hunk: hunks_mod.Hunk,
+    path: str,
+    base_text: str,
+    queue: List[_Item],
+    position: int,
+) -> Union[patch_mod.PatchHunk, None, _EditRetry]:
     """`e`: edit one hunk in the editor and validate it before accepting.
 
     Validation trial-applies every staged hunk *in file order* with this
@@ -461,7 +492,7 @@ def _edit_hunk(ctx, diff, hunk, path, base_text, queue, position):
 # prompting
 # ----------------------------------------------------------------------
 def _whole_file(
-    ctx, entry: FileStatus, display: str, work_bytes: bytes
+    ctx: "Context", entry: FileStatus, display: str, work_bytes: bytes
 ) -> Optional[bool]:
     """Binary files have no hunks to choose between: all or nothing."""
     ctx.echo("diff --git a/%s b/%s" % (entry.path, entry.path))
@@ -505,7 +536,7 @@ def _available(position: int, queue: List[_Item], splittable: bool) -> List[str]
 
 
 def _ask(
-    ctx,
+    ctx: "Context",
     position: int,
     queue: List[_Item],
     splittable: bool = False,
@@ -552,7 +583,7 @@ def _ask(
 # ----------------------------------------------------------------------
 # git add -e
 # ----------------------------------------------------------------------
-def stage_edit(ctx, entries: List[FileStatus]) -> int:
+def stage_edit(ctx: "Context", entries: List[FileStatus]) -> int:
     """`git add -e`: hand the whole diff to the editor, stage what comes back."""
     from .. import editor as editor_mod
 

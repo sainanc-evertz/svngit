@@ -21,7 +21,11 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Optional
+from typing import TYPE_CHECKING, Any, Optional, Sequence
+
+if TYPE_CHECKING:  # pragma: no cover
+    from .cliargs import Options
+    from .context import Context
 
 RESET = "\033[m"
 
@@ -105,7 +109,11 @@ def _setting(value: Optional[str]) -> Optional[bool]:
     return None  # "auto", or anything unrecognised
 
 
-def want_colour(ctx, opts=None, keys=("color.diff",)) -> bool:
+def want_colour(
+    ctx: "Context",
+    opts: Optional["Options"] = None,
+    keys: Sequence[str] = ("color.diff",),
+) -> bool:
     """Whether this invocation should emit colour.
 
     `keys` is the command-specific config consulted before the general
@@ -124,7 +132,7 @@ def want_colour(ctx, opts=None, keys=("color.diff",)) -> bool:
     if os.environ.get("NO_COLOR") is not None:
         return False
 
-    for key in keys + ("color.ui",):
+    for key in list(keys) + ["color.ui"]:
         decided = _setting(ctx.state.get_config(key)) if _has_state(ctx) else None
         if decided is not None:
             return decided
@@ -132,7 +140,7 @@ def want_colour(ctx, opts=None, keys=("color.diff",)) -> bool:
     return is_terminal(ctx.stdout)
 
 
-def _has_state(ctx) -> bool:
+def _has_state(ctx: "Context") -> bool:
     """Config lives per working copy, and `git diff` can be run without one."""
     try:
         return ctx.in_working_copy()
@@ -140,7 +148,7 @@ def _has_state(ctx) -> bool:
         return False
 
 
-def is_terminal(stream) -> bool:
+def is_terminal(stream: Any) -> bool:
     if os.environ.get("TERM") == "dumb":
         return False
     try:
@@ -149,7 +157,11 @@ def is_terminal(stream) -> bool:
         return False
 
 
-def palette_for(ctx, opts=None, keys=("color.diff",)) -> Palette:
+def palette_for(
+    ctx: "Context",
+    opts: Optional["Options"] = None,
+    keys: Sequence[str] = ("color.diff",),
+) -> Palette:
     return Palette.on() if want_colour(ctx, opts, keys) else Palette.off()
 
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Callable, Dict
+
 import os
 import shutil
 from pathlib import Path
@@ -12,11 +14,14 @@ from ..cliargs import no_effect, parse, refuse
 from ..errors import UsageError, SvnGitError
 from ..state import ADD, DELETE, MODIFY
 
+if TYPE_CHECKING:  # pragma: no cover
+    from ..context import Context
+
 
 # ----------------------------------------------------------------------
 # clone
 # ----------------------------------------------------------------------
-def cmd_clone(ctx, argv: List[str]) -> int:
+def cmd_clone(ctx: "Context", argv: List[str]) -> int:
     opts = parse(
         argv,
         flags=["bare", "quiet", "q", "no-checkout", "n", "full"],
@@ -97,7 +102,7 @@ def _clone_destination(url: str, checkout_url: str) -> str:
 # ----------------------------------------------------------------------
 # init
 # ----------------------------------------------------------------------
-def cmd_init(ctx, argv: List[str]) -> int:
+def cmd_init(ctx: "Context", argv: List[str]) -> int:
     opts = parse(
         argv, flags=["standalone", "bare", "quiet", "q"], values=["initial-branch", "b"]
     )
@@ -166,7 +171,7 @@ def cmd_init(ctx, argv: List[str]) -> int:
 # ----------------------------------------------------------------------
 # status
 # ----------------------------------------------------------------------
-def cmd_status(ctx, argv: List[str]) -> int:
+def cmd_status(ctx: "Context", argv: List[str]) -> int:
     opts = parse(
         argv,
         flags=[
@@ -224,7 +229,7 @@ def cmd_status(ctx, argv: List[str]) -> int:
     return 0
 
 
-def _incoming_count(ctx) -> int:
+def _incoming_count(ctx: "Context") -> int:
     """How many server revisions we do not have yet.
 
     Off by default: `git status` is a local, instant command in git, and
@@ -243,7 +248,7 @@ def _incoming_count(ctx) -> int:
 # ----------------------------------------------------------------------
 # add
 # ----------------------------------------------------------------------
-def cmd_add(ctx, argv: List[str]) -> int:
+def cmd_add(ctx: "Context", argv: List[str]) -> int:
     opts = parse(
         argv,
         flags=[
@@ -327,7 +332,11 @@ def cmd_add(ctx, argv: List[str]) -> int:
 
 
 def _stage_one(
-    ctx, entry, dry_run: bool = False, verbose: bool = False, intent_only: bool = False
+    ctx: "Context",
+    entry: status_mod.FileStatus,
+    dry_run: bool = False,
+    verbose: bool = False,
+    intent_only: bool = False,
 ) -> bool:
     """Stage a single path, running whatever svn scheduling it needs."""
     abs_path = ctx.abs_path(entry.path)
@@ -410,7 +419,7 @@ def _is_executable(path: Path) -> bool:
 # ----------------------------------------------------------------------
 # rm / mv
 # ----------------------------------------------------------------------
-def cmd_rm(ctx, argv: List[str]) -> int:
+def cmd_rm(ctx: "Context", argv: List[str]) -> int:
     opts = parse(
         argv, flags=["r", "cached", "force", "f", "dry-run", "n", "quiet", "q"]
     )
@@ -435,7 +444,7 @@ def cmd_rm(ctx, argv: List[str]) -> int:
     return 0
 
 
-def cmd_mv(ctx, argv: List[str]) -> int:
+def cmd_mv(ctx: "Context", argv: List[str]) -> int:
     opts = parse(argv, flags=["force", "f", "verbose", "v", "dry-run", "n", "k"])
     no_effect(
         ctx,
@@ -475,7 +484,7 @@ def cmd_mv(ctx, argv: List[str]) -> int:
 # ----------------------------------------------------------------------
 # reset / restore
 # ----------------------------------------------------------------------
-def cmd_reset(ctx, argv: List[str]) -> int:
+def cmd_reset(ctx: "Context", argv: List[str]) -> int:
     opts = parse(argv, flags=["soft", "mixed", "hard", "keep", "merge", "quiet", "q"])
     refuse(
         "reset",
@@ -512,7 +521,7 @@ def cmd_reset(ctx, argv: List[str]) -> int:
     return _unstage(ctx, paths)
 
 
-def _reset_soft(ctx) -> int:
+def _reset_soft(ctx: "Context") -> int:
     commit = ctx.state.pop_commit()
     if commit is None:
         raise SvnGitError(
@@ -526,7 +535,7 @@ def _reset_soft(ctx) -> int:
     return 0
 
 
-def _reset_hard(ctx, revision: Optional[str]) -> int:
+def _reset_hard(ctx: "Context", revision: Optional[str]) -> int:
     from .. import revisions as rev_mod
 
     if revision:
@@ -544,7 +553,7 @@ def _reset_hard(ctx, revision: Optional[str]) -> int:
     return 0
 
 
-def _unstage(ctx, paths: List[str]) -> int:
+def _unstage(ctx: "Context", paths: List[str]) -> int:
     index = ctx.state.index
     wanted = ctx.to_wc_paths(paths) if paths else list(index)
     changed = 0
@@ -566,12 +575,15 @@ def _unstage(ctx, paths: List[str]) -> int:
         unstaged = [e for e in report.unstaged]
         if unstaged:
             ctx.echo("Unstaged changes after reset:")
-            for entry in unstaged:
-                ctx.echo("%s\t%s" % (entry.worktree, ctx.display_path(entry.path)))
+            for changed_entry in unstaged:
+                ctx.echo(
+                    "%s\t%s"
+                    % (changed_entry.worktree, ctx.display_path(changed_entry.path))
+                )
     return 0
 
 
-def cmd_restore(ctx, argv: List[str]) -> int:
+def cmd_restore(ctx: "Context", argv: List[str]) -> int:
     opts = parse(
         argv,
         flags=["staged", "S", "worktree", "W", "quiet", "q"],
@@ -606,7 +618,7 @@ def cmd_restore(ctx, argv: List[str]) -> int:
 # ----------------------------------------------------------------------
 # clean
 # ----------------------------------------------------------------------
-def cmd_clean(ctx, argv: List[str]) -> int:
+def cmd_clean(ctx: "Context", argv: List[str]) -> int:
     opts = parse(
         argv,
         flags=[
@@ -670,7 +682,7 @@ def cmd_clean(ctx, argv: List[str]) -> int:
 SPARSE_KEY = "svngit.sparse"
 
 
-def cmd_sparse_checkout(ctx, argv: List[str]) -> int:
+def cmd_sparse_checkout(ctx: "Context", argv: List[str]) -> int:
     """Subversion calls this sparse directories, set with `svn update --set-depth`.
 
     The mapping is direct: a path in the cone is checked out at full depth,
@@ -681,7 +693,7 @@ def cmd_sparse_checkout(ctx, argv: List[str]) -> int:
     subcommand = argv[0] if argv and not argv[0].startswith("-") else None
     rest = argv[1:] if subcommand else argv
 
-    handlers = {
+    handlers: Dict[str, Callable[["Context", List[str]], int]] = {
         "list": _sparse_list,
         "set": lambda c, a: _sparse_apply(c, a, replace=True),
         "add": lambda c, a: _sparse_apply(c, a, replace=False),
@@ -697,12 +709,12 @@ def cmd_sparse_checkout(ctx, argv: List[str]) -> int:
     return handler(ctx, rest)
 
 
-def _sparse_paths(ctx) -> List[str]:
+def _sparse_paths(ctx: "Context") -> List[str]:
     stored = ctx.state.get_config(SPARSE_KEY, "")
     return [p for p in stored.split("\n") if p]
 
 
-def _sparse_list(ctx, argv: List[str]) -> int:
+def _sparse_list(ctx: "Context", argv: List[str]) -> int:
     paths = _sparse_paths(ctx)
     if not paths:
         ctx.warn("this working copy is not sparse")
@@ -712,7 +724,7 @@ def _sparse_list(ctx, argv: List[str]) -> int:
     return 0
 
 
-def _sparse_init(ctx, argv: List[str]) -> int:
+def _sparse_init(ctx: "Context", argv: List[str]) -> int:
     opts = parse(argv, flags=["cone", "no-cone", "sparse-index"])
     refuse(
         "sparse-checkout",
@@ -741,7 +753,7 @@ def _sparse_init(ctx, argv: List[str]) -> int:
     return 0
 
 
-def _sparse_apply(ctx, argv: List[str], replace: bool) -> int:
+def _sparse_apply(ctx: "Context", argv: List[str], replace: bool) -> int:
     opts = parse(argv, flags=["cone", "no-cone", "skip-checks", "stdin"])
     refuse(
         "sparse-checkout",
@@ -802,7 +814,7 @@ def _sparse_apply(ctx, argv: List[str], replace: bool) -> int:
     return 0
 
 
-def _sparse_disable(ctx, argv: List[str]) -> int:
+def _sparse_disable(ctx: "Context", argv: List[str]) -> int:
     ctx.svn.run(
         "update",
         "--set-depth",

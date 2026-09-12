@@ -7,17 +7,22 @@ object store, so nothing touches the server.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Any, Dict
+
 import tempfile
 from pathlib import Path
 from typing import List
 
 from .. import formatting, status as status_mod
-from ..cliargs import parse
+from ..cliargs import Options, parse
 from ..errors import SvnGitError, UsageError
 from ..state import ADD, StashEntry, make_commit_id, now
 
+if TYPE_CHECKING:  # pragma: no cover
+    from ..context import Context
 
-def cmd_stash(ctx, argv: List[str]) -> int:
+
+def cmd_stash(ctx: "Context", argv: List[str]) -> int:
     subcommand = "push"
     rest = list(argv)
     if rest and not rest[0].startswith("-"):
@@ -43,7 +48,7 @@ def cmd_stash(ctx, argv: List[str]) -> int:
     return handler(ctx, rest)
 
 
-def _push(ctx, argv: List[str]) -> int:
+def _push(ctx: "Context", argv: List[str]) -> int:
     opts = parse(
         argv,
         flags=[
@@ -88,7 +93,7 @@ def _push(ctx, argv: List[str]) -> int:
 
     index_snapshot = {path: vars(entry) for path, entry in ctx.state.index.items()}
     timestamp = now()
-    entry = StashEntry(
+    stash_entry = StashEntry(
         id=make_commit_id(message or "stash", [], timestamp),
         message=message
         or "WIP on %s: %s" % (ctx.branch, formatting.revision_id(ctx.info.revision)),
@@ -113,7 +118,7 @@ def _push(ctx, argv: List[str]) -> int:
         if absolute.is_file():
             absolute.unlink()
 
-    ctx.state.push_stash(entry)
+    ctx.state.push_stash(stash_entry)
     if opts.has("keep-index", "k"):
         # git leaves the staged content in the working copy; only the unstaged
         # changes go away. The index itself is untouched.
@@ -128,11 +133,11 @@ def _push(ctx, argv: List[str]) -> int:
         ctx.state.clear_index()
     ctx.state.save()
     if not opts.has("quiet", "q"):
-        ctx.echo("Saved working directory and index state %s" % entry.message)
+        ctx.echo("Saved working directory and index state %s" % stash_entry.message)
     return 0
 
 
-def _push_patch(ctx, opts, message: str) -> int:
+def _push_patch(ctx: "Context", opts: Options, message: str) -> int:
     """`git stash -p`: choose hunks to take out of the working copy.
 
     The sense is the opposite of `git add -p`. A hunk you accept is removed
@@ -148,7 +153,7 @@ def _push_patch(ctx, opts, message: str) -> int:
     if opts.has("include-untracked", "u", "all", "a"):
         ctx.note("untracked files have no hunks to choose from; -p ignores them")
 
-    saved: List[dict] = []
+    saved: List[Dict[str, str]] = []
     touched: List[str] = []
     for entry in report.entries:
         if entry.untracked or entry.ignored or entry.unmerged:
@@ -224,7 +229,7 @@ def _push_patch(ctx, opts, message: str) -> int:
     return 0
 
 
-def _restore_partial(ctx, entry: StashEntry) -> None:
+def _restore_partial(ctx: "Context", entry: StashEntry) -> None:
     """Put back a `-p` stash.
 
     A three-way merge against the content the stash left behind. When nothing
@@ -257,13 +262,13 @@ def _restore_partial(ctx, entry: StashEntry) -> None:
         absolute.write_bytes(merged.encode("utf-8"))
 
 
-def _list(ctx, argv: List[str]) -> int:
+def _list(ctx: "Context", argv: List[str]) -> int:
     for position, entry in enumerate(ctx.state.stash):
         ctx.echo("stash@{%d}: %s" % (position, entry.message))
     return 0
 
 
-def _resolve_index(ctx, argv: List[str]) -> int:
+def _resolve_index(ctx: "Context", argv: List[str]) -> int:
     entries = ctx.state.stash
     if not entries:
         raise SvnGitError("No stash entries found.")
@@ -282,7 +287,7 @@ def _resolve_index(ctx, argv: List[str]) -> int:
     return position
 
 
-def _apply(ctx, argv: List[str], drop: bool) -> int:
+def _apply(ctx: "Context", argv: List[str], drop: bool) -> int:
     position = _resolve_index(ctx, argv)
     entries = ctx.state.stash
     entry = entries[position]
@@ -333,7 +338,7 @@ def _apply(ctx, argv: List[str], drop: bool) -> int:
     return 0
 
 
-def _drop(ctx, argv: List[str]) -> int:
+def _drop(ctx: "Context", argv: List[str]) -> int:
     position = _resolve_index(ctx, argv)
     entries = ctx.state.stash
     entry = entries.pop(position)
@@ -343,13 +348,13 @@ def _drop(ctx, argv: List[str]) -> int:
     return 0
 
 
-def _clear(ctx, argv: List[str]) -> int:
+def _clear(ctx: "Context", argv: List[str]) -> int:
     ctx.state.set_stash([])
     ctx.state.save()
     return 0
 
 
-def _show(ctx, argv: List[str]) -> int:
+def _show(ctx: "Context", argv: List[str]) -> int:
     from .. import colour as colour_mod
     from .. import patch as patch_mod
 
@@ -375,7 +380,7 @@ def _show(ctx, argv: List[str]) -> int:
     return 0
 
 
-def _branch(ctx, argv: List[str]) -> int:
+def _branch(ctx: "Context", argv: List[str]) -> int:
     """`git stash branch <name> [<stash>]`: start a branch and restore there.
 
     Useful when a stash no longer applies to the branch you are on; in

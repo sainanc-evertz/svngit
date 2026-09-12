@@ -7,6 +7,8 @@ tolerates the stale hunk headers that hand-edited patches carry.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import os
 import sys
 import tarfile
@@ -16,8 +18,12 @@ from pathlib import Path
 from typing import List, Optional
 
 from .. import formatting, patch as patch_mod, revisions as rev_mod
-from ..cliargs import no_effect, parse, refuse
+from ..cliargs import Options, no_effect, parse, refuse
 from ..errors import SvnGitError, UsageError
+from ..svnclient import LogEntry
+
+if TYPE_CHECKING:  # pragma: no cover
+    from ..context import Context
 
 #: End-of-patch marker in mbox format. The trailing space is significant: it
 #: is what separates the signature from a deletion of a line reading "-".
@@ -27,7 +33,7 @@ SIGNATURE = "-- "
 # ----------------------------------------------------------------------
 # apply
 # ----------------------------------------------------------------------
-def cmd_apply(ctx, argv: List[str]) -> int:
+def cmd_apply(ctx: "Context", argv: List[str]) -> int:
     opts = parse(
         argv,
         flags=[
@@ -137,7 +143,7 @@ def _reverse(file_patch: patch_mod.FilePatch) -> None:
         hunk.old_lines, hunk.new_lines = hunk.new_lines, hunk.old_lines
 
 
-def _report(ctx, patches, opts) -> int:
+def _report(ctx: "Context", patches: List[patch_mod.FilePatch], opts: Options) -> int:
     rows = []
     for file_patch in patches:
         insertions = deletions = 0
@@ -163,7 +169,7 @@ def _report(ctx, patches, opts) -> int:
 # ----------------------------------------------------------------------
 # format-patch
 # ----------------------------------------------------------------------
-def cmd_format_patch(ctx, argv: List[str]) -> int:
+def cmd_format_patch(ctx: "Context", argv: List[str]) -> int:
     opts = parse(
         argv,
         flags=[
@@ -235,7 +241,14 @@ def cmd_format_patch(ctx, argv: List[str]) -> int:
     return 0
 
 
-def _mbox(ctx, entry, prefix: str, number: int, total: int, opts) -> str:
+def _mbox(
+    ctx: "Context",
+    entry: LogEntry,
+    prefix: str,
+    number: int,
+    total: int,
+    opts: Options,
+) -> str:
     """One revision as a git-am-compatible patch."""
     subject = (
         entry.message.strip().splitlines()[0]
@@ -280,7 +293,7 @@ def _slug(message: str) -> str:
 # ----------------------------------------------------------------------
 # archive
 # ----------------------------------------------------------------------
-def cmd_archive(ctx, argv: List[str]) -> int:
+def cmd_archive(ctx: "Context", argv: List[str]) -> int:
     opts = parse(
         argv,
         flags=["verbose", "v", "list", "l"],
@@ -352,8 +365,14 @@ def _write_archive(source: Path, target: Path, fmt: str, prefix: str) -> None:
                     )
         return
 
-    mode = "w:gz" if fmt in ("tar.gz", "tgz") else "w"
-    with tarfile.open(target, mode) as archive:
+    # tarfile.open's mode is a Literal, so the two cases stay separate rather
+    # than being selected through a variable.
+    opened = (
+        tarfile.open(target, "w:gz")
+        if fmt in ("tar.gz", "tgz")
+        else tarfile.open(target, "w")
+    )
+    with opened as archive:
         for path in sorted(source.rglob("*")):
             if path.is_file():
                 inner = path.relative_to(source)

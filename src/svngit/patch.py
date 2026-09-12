@@ -19,6 +19,7 @@ Two details make hand-edited patches survivable:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
 
 from . import hunks as hunks_mod
@@ -73,7 +74,7 @@ def render_file_patch(path: str, base: str, work: str, context: int = 3) -> List
     return lines
 
 
-def hunk_body(diff, hunk) -> List[Tuple[str, str]]:
+def hunk_body(diff: hunks_mod.FileDiff, hunk: hunks_mod.Hunk) -> List[Tuple[str, str]]:
     """The hunk's body as (prefix, raw line) pairs, newlines intact."""
     first = diff.ops[hunk.changed_ops[0]]
     last = diff.ops[hunk.changed_ops[-1]]
@@ -90,7 +91,7 @@ def hunk_body(diff, hunk) -> List[Tuple[str, str]]:
     return out
 
 
-def from_diff_hunk(diff, hunk) -> PatchHunk:
+def from_diff_hunk(diff: hunks_mod.FileDiff, hunk: hunks_mod.Hunk) -> PatchHunk:
     """Express one of `hunks.diff_file`'s hunks as a patch hunk.
 
     Lets the `git add -p` loop hold accepted hunks in a single representation
@@ -106,7 +107,7 @@ def from_diff_hunk(diff, hunk) -> PatchHunk:
     return PatchHunk(old_start=hunk.base_start + 1, old_lines=old, new_lines=new)
 
 
-def render_hunk(diff, hunk) -> List[str]:
+def render_hunk(diff: hunks_mod.FileDiff, hunk: hunks_mod.Hunk) -> List[str]:
     """One hunk on its own, for editing in isolation."""
     lines = [hunk.header]
     for prefix, text in hunk_body(diff, hunk):
@@ -298,7 +299,7 @@ def _locate(
 # ----------------------------------------------------------------------
 # three-way merge
 # ----------------------------------------------------------------------
-def to_git_headers(diff_text: str, wc_root) -> str:
+def to_git_headers(diff_text: str, wc_root: "Path") -> str:
     """Rewrite `svn diff` headers into git's form.
 
     svn labels files with `Index:` and annotates the ---/+++ paths with a
@@ -372,7 +373,7 @@ def merge3(ancestor: str, ours: str, theirs: str) -> Optional[str]:
     return "".join(out)
 
 
-def _edits(base: List[str], other: List[str]) -> List[tuple]:
+def _edits(base: List[str], other: List[str]) -> List[Tuple[int, int, Tuple[str, ...]]]:
     """Changed regions as (start, end, replacement) against `base`."""
     from difflib import SequenceMatcher
 

@@ -13,9 +13,12 @@ is centralised here rather than spelled out at each call site.
 from __future__ import annotations
 
 import re
-from typing import Optional, Tuple
+from typing import TYPE_CHECKING, Optional, Tuple
 
 from .errors import UsageError
+
+if TYPE_CHECKING:  # pragma: no cover
+    from .context import Context
 
 _REV_NUMBER = re.compile(r"^r?(\d+)$")
 _ANCESTOR = re.compile(r"^(?P<base>[A-Za-z0-9_@{}/.^-]*?)(?P<op>[~^])(?P<count>\d*)$")
@@ -47,7 +50,7 @@ def is_range(spec: str) -> bool:
     return ".." in spec
 
 
-def resolve(ctx, spec: str, target: str = ".") -> int:
+def resolve(ctx: "Context", spec: str, target: str = ".") -> int:
     """Resolve one git revision expression to an svn revision number."""
     spec = spec.strip()
     if not spec:
@@ -95,7 +98,9 @@ def resolve(ctx, spec: str, target: str = ".") -> int:
     raise UsageError("unknown revision or path not in the working copy: %s" % spec)
 
 
-def _nth_ancestor(ctx, target: str, count: int, start: Optional[int] = None) -> int:
+def _nth_ancestor(
+    ctx: "Context", target: str, count: int, start: Optional[int] = None
+) -> int:
     """Walk back `count` revisions *that touched this path*.
 
     git counts commits; svn revision numbers are repository-global and mostly
@@ -112,7 +117,7 @@ def _nth_ancestor(ctx, target: str, count: int, start: Optional[int] = None) -> 
     return entries[count].revision
 
 
-def _resolve_ref(ctx, name: str) -> Optional[int]:
+def _resolve_ref(ctx: "Context", name: str) -> Optional[int]:
     """Resolve a branch or tag name to the revision it was last changed at."""
     info = ctx.info
     lay = ctx.layout
@@ -133,7 +138,7 @@ def _resolve_ref(ctx, name: str) -> Optional[int]:
     return None
 
 
-def to_svn_range(ctx, spec: str, target: str = ".") -> str:
+def to_svn_range(ctx: "Context", spec: str, target: str = ".") -> str:
     """Turn a git revision or range into the argument for `svn -r`."""
     if is_range(spec):
         left, right = split_range(spec)

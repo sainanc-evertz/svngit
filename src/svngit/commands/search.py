@@ -8,6 +8,8 @@ unversioned or ignored, and never descends into `.svn`.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Tuple
+
 import fnmatch
 import os
 import re
@@ -19,6 +21,9 @@ from ..cliargs import parse, refuse
 from ..errors import UsageError
 from ..hunks import is_binary
 
+if TYPE_CHECKING:  # pragma: no cover
+    from ..context import Context
+
 #: Subversion's own default ignores, used when nothing is configured.
 DEFAULT_GLOBAL_IGNORES = (
     "*.o *.lo *.la *.al .libs *.so *.so.[0-9]* *.a *.pyc *.pyo __pycache__ "
@@ -27,7 +32,7 @@ DEFAULT_GLOBAL_IGNORES = (
 
 
 def tracked_files(
-    ctx, paths: Optional[List[str]] = None, include_untracked: bool = False
+    ctx: "Context", paths: Optional[List[str]] = None, include_untracked: bool = False
 ) -> Iterator[Path]:
     """Every versioned file under `paths`, or under the working copy root.
 
@@ -66,7 +71,7 @@ def tracked_files(
 # ----------------------------------------------------------------------
 # grep
 # ----------------------------------------------------------------------
-def cmd_grep(ctx, argv: List[str]) -> int:
+def cmd_grep(ctx: "Context", argv: List[str]) -> int:
     opts = parse(
         argv,
         flags=[
@@ -200,7 +205,7 @@ def cmd_grep(ctx, argv: List[str]) -> int:
 # ----------------------------------------------------------------------
 # check-ignore
 # ----------------------------------------------------------------------
-def cmd_check_ignore(ctx, argv: List[str]) -> int:
+def cmd_check_ignore(ctx: "Context", argv: List[str]) -> int:
     opts = parse(argv, flags=["verbose", "v", "non-matching", "n", "quiet", "q"])
     if not opts.paths:
         raise UsageError("git check-ignore <path>...")
@@ -224,7 +229,7 @@ def cmd_check_ignore(ctx, argv: List[str]) -> int:
     return 0 if matched else 1
 
 
-def _ignore_match(ctx, wc_path: str):
+def _ignore_match(ctx: "Context", wc_path: str) -> Tuple[Optional[str], Optional[str]]:
     """Which pattern, if any, makes Subversion ignore this path.
 
     Patterns are read rather than inferred from `svn status`, so a path that

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
-from typing import List, Set
+from typing import List, Set, Tuple, cast
 
 DEFAULT_CONTEXT = 3
 
@@ -53,7 +53,7 @@ class FileDiff:
 
     base: List[str]
     work: List[str]
-    ops: List[tuple]
+    ops: List[Tuple[str, int, int, int, int]]
     hunks: List[Hunk] = field(default_factory=list)
     context: int = DEFAULT_CONTEXT
 
@@ -122,7 +122,12 @@ def diff_file(base: str, work: str, context: int = DEFAULT_CONTEXT) -> FileDiff:
     """
     base_lines = base.splitlines(keepends=True)
     work_lines = work.splitlines(keepends=True)
-    ops = SequenceMatcher(None, base_lines, work_lines, autojunk=False).get_opcodes()
+    # get_opcodes types its tag as a Literal; widen it once here rather
+    # than threading the Literal through everything that reads ops.
+    ops = cast(
+        List[Tuple[str, int, int, int, int]],
+        SequenceMatcher(None, base_lines, work_lines, autojunk=False).get_opcodes(),
+    )
 
     diff = FileDiff(base_lines, work_lines, ops, context=context)
     changed = [index for index, op in enumerate(ops) if op[0] != "equal"]
@@ -147,7 +152,7 @@ def is_binary(data: bytes) -> bool:
     return b"\x00" in data[:8000]
 
 
-def summarise(diff: FileDiff, selected_ops: Set[int]) -> tuple:
+def summarise(diff: FileDiff, selected_ops: Set[int]) -> Tuple[int, int]:
     """(insertions, deletions) contributed by the selected opcodes."""
     insertions = deletions = 0
     for index, (tag, i1, i2, j1, j2) in enumerate(diff.ops):

@@ -6,7 +6,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from typing import Iterable, List, Optional
+from typing import Iterable, List, Optional, TextIO
 
 from . import layout as layout_mod
 from .errors import NotAWorkingCopy
@@ -33,11 +33,11 @@ class Context:
         cwd: Optional[Path] = None,
         dry_run: bool = False,
         trace: bool = False,
-        stdout=None,
-        stderr=None,
-        stdin=None,
+        stdout: Optional[TextIO] = None,
+        stderr: Optional[TextIO] = None,
+        stdin: Optional[TextIO] = None,
         svn_binary: Optional[str] = None,
-    ):
+    ) -> None:
         self.cwd = Path(cwd or Path.cwd())
         self.dry_run = dry_run
         self.stdout = stdout if stdout is not None else sys.stdout
@@ -82,7 +82,7 @@ class Context:
             return True
         if not self.in_working_copy():
             return False
-        return self.state.get_config("svngit.quiet") == "true"
+        return bool(self.state.get_config("svngit.quiet") == "true")
 
     # ------------------------------------------------------------------
     # working copy
@@ -91,7 +91,7 @@ class Context:
     def wc_root(self) -> Path:
         root = self.find_wc()
         if root is None:
-            raise NotAWorkingCopy(self.cwd)
+            raise NotAWorkingCopy(str(self.cwd))
         return root
 
     def find_wc(self) -> Optional[Path]:

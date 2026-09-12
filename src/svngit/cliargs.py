@@ -8,9 +8,12 @@ nothing more.
 
 from __future__ import annotations
 
-from typing import Dict, Iterable, List, Sequence, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Sequence, Tuple
 
 from .errors import Unsupported, UsageError
+
+if TYPE_CHECKING:  # pragma: no cover
+    from .context import Context
 
 
 class Options:
@@ -40,11 +43,11 @@ class Options:
         value = self._values.get(name)
         return isinstance(value, int) and not isinstance(value, bool) and value == 0
 
-    def get(self, name: str, default=None):
+    def get(self, name: str, default: Any = None) -> Any:
         value = self._values.get(name, default)
         return value
 
-    def first(self, *names: str, default=None):
+    def first(self, *names: str, default: Any = None) -> Any:
         for name in names:
             if name in self._values:
                 return self._values[name]
@@ -163,7 +166,9 @@ def parse(
     return Options(parsed, positionals, after_dashdash)
 
 
-def split_revisions_and_paths(ctx, items: Sequence[str]) -> Tuple[List[str], List[str]]:
+def split_revisions_and_paths(
+    ctx: "Context", items: Sequence[str]
+) -> Tuple[List[str], List[str]]:
     """git lets revisions and paths share the positional slot. Anything that
     exists on disk is a path; everything else is treated as a revision."""
     revisions: List[str] = []
@@ -180,7 +185,7 @@ def split_revisions_and_paths(ctx, items: Sequence[str]) -> Tuple[List[str], Lis
 # ----------------------------------------------------------------------
 # options that cannot be honoured
 # ----------------------------------------------------------------------
-def refuse(command: str, opts: Options, reasons: dict) -> None:
+def refuse(command: str, opts: Options, reasons: Dict[str, str]) -> None:
     """Raise for any option present that svngit cannot honour.
 
     Accepting an option and then ignoring it is the worst outcome: the user
@@ -193,7 +198,9 @@ def refuse(command: str, opts: Options, reasons: dict) -> None:
             raise Unsupported("git %s %s%s: %s" % (command, dash, name, reason))
 
 
-def no_effect(ctx, command: str, opts: Options, reasons: dict) -> None:
+def no_effect(
+    ctx: "Context", command: str, opts: Options, reasons: Dict[str, str]
+) -> None:
     """Report any option that is accepted but changes nothing here."""
     for name, reason in reasons.items():
         if opts.has(name):

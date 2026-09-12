@@ -2,18 +2,23 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from typing import List
 
 from .. import formatting
-from ..cliargs import parse, refuse
+from ..cliargs import Options, parse, refuse
 from ..errors import SvnGitError, UsageError
 from .. import revisions as rev_mod
+
+if TYPE_CHECKING:  # pragma: no cover
+    from ..context import Context
 
 
 # ----------------------------------------------------------------------
 # config
 # ----------------------------------------------------------------------
-def cmd_config(ctx, argv: List[str]) -> int:
+def cmd_config(ctx: "Context", argv: List[str]) -> int:
     opts = parse(
         argv,
         flags=["list", "l", "global", "local", "system", "get", "bool", "int"],
@@ -74,7 +79,7 @@ def cmd_config(ctx, argv: List[str]) -> int:
     return 0
 
 
-def _typed(value: str, opts) -> str:
+def _typed(value: str, opts: Options) -> str:
     """Apply git's --bool / --int canonicalisation to a config value."""
     if opts.has("bool"):
         return (
@@ -93,7 +98,7 @@ def _typed(value: str, opts) -> str:
 # ----------------------------------------------------------------------
 # remote
 # ----------------------------------------------------------------------
-def cmd_remote(ctx, argv: List[str]) -> int:
+def cmd_remote(ctx: "Context", argv: List[str]) -> int:
     opts = parse(argv, flags=["verbose", "v"])
     subcommand = opts.positionals[0] if opts.positionals else None
 
@@ -126,7 +131,7 @@ def cmd_remote(ctx, argv: List[str]) -> int:
 # ----------------------------------------------------------------------
 # rev-parse
 # ----------------------------------------------------------------------
-def cmd_rev_parse(ctx, argv: List[str]) -> int:
+def cmd_rev_parse(ctx: "Context", argv: List[str]) -> int:
     opts = parse(
         argv,
         flags=[
@@ -185,7 +190,7 @@ def cmd_rev_parse(ctx, argv: List[str]) -> int:
 # ----------------------------------------------------------------------
 # ls-files
 # ----------------------------------------------------------------------
-def cmd_ls_files(ctx, argv: List[str]) -> int:
+def cmd_ls_files(ctx: "Context", argv: List[str]) -> int:
     opts = parse(
         argv,
         flags=[
@@ -307,12 +312,12 @@ Full command mapping: docs/COMMANDS.md
 """
 
 
-def cmd_help(ctx, argv: List[str]) -> int:
+def cmd_help(ctx: "Context", argv: List[str]) -> int:
     ctx.echo(USAGE.rstrip())
     return 0
 
 
-def cmd_version(ctx, argv: List[str]) -> int:
+def cmd_version(ctx: "Context", argv: List[str]) -> int:
     from .. import __version__
 
     ctx.echo("svngit version %s" % __version__)

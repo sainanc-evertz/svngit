@@ -15,7 +15,7 @@ import sys
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Iterable, List, Optional, Sequence
+from typing import Iterable, List, Optional, Sequence, TextIO
 
 from .errors import SvnCommandError, SvnGitError
 
@@ -125,8 +125,8 @@ class SvnClient:
         binary: Optional[str] = None,
         dry_run: bool = False,
         trace: bool = False,
-        stderr=None,
-    ):
+        stderr: Optional[TextIO] = None,
+    ) -> None:
         self.cwd = cwd
         self.binary = binary or os.environ.get("SVNGIT_SVN", "svn")
         self.dry_run = dry_run

@@ -9,7 +9,7 @@ config so non-standard repositories still work.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from .errors import SvnGitError
 from .svnclient import SvnClient, SvnInfo
@@ -67,7 +67,7 @@ class Layout:
         return rel or TRUNK_BRANCH_NAME
 
 
-def detect(client: SvnClient, info: SvnInfo, config: dict) -> Layout:
+def detect(client: SvnClient, info: SvnInfo, config: Dict[str, str]) -> Layout:
     """Work out the layout, preferring explicit config over probing the server."""
     layout = Layout(
         trunk=config.get("svngit.trunk", DEFAULT_TRUNK),

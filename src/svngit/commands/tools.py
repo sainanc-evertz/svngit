@@ -7,6 +7,8 @@ the tool and then tells Subversion the conflict is resolved.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Sequence, Tuple
+
 import shutil
 import subprocess
 from pathlib import Path
@@ -16,12 +18,15 @@ from .. import status as status_mod
 from ..cliargs import no_effect, parse
 from ..errors import SvnGitError
 
+if TYPE_CHECKING:  # pragma: no cover
+    from ..context import Context
+
 #: Tried in order when no tool is configured.
 DIFF_TOOLS = ("difft", "delta", "colordiff", "diff")
 MERGE_TOOLS = ("nvim", "vimdiff", "kdiff3", "meld", "opendiff", "diff3")
 
 
-def _pick(configured: Optional[str], candidates) -> Optional[str]:
+def _pick(configured: Optional[str], candidates: Sequence[str]) -> Optional[str]:
     if configured:
         return str(configured)
     for name in candidates:
@@ -33,7 +38,7 @@ def _pick(configured: Optional[str], candidates) -> Optional[str]:
 # ----------------------------------------------------------------------
 # difftool
 # ----------------------------------------------------------------------
-def cmd_difftool(ctx, argv: List[str]) -> int:
+def cmd_difftool(ctx: "Context", argv: List[str]) -> int:
     opts = parse(
         argv,
         flags=[
@@ -86,7 +91,7 @@ def cmd_difftool(ctx, argv: List[str]) -> int:
 # ----------------------------------------------------------------------
 # mergetool
 # ----------------------------------------------------------------------
-def cmd_mergetool(ctx, argv: List[str]) -> int:
+def cmd_mergetool(ctx: "Context", argv: List[str]) -> int:
     opts = parse(
         argv,
         flags=["no-prompt", "y", "prompt", "gui", "g"],
@@ -157,7 +162,9 @@ def cmd_mergetool(ctx, argv: List[str]) -> int:
     return 0
 
 
-def _conflict_files(absolute: Path):
+def _conflict_files(
+    absolute: Path,
+) -> Tuple[Optional[Path], Optional[Path], Optional[Path]]:
     """Subversion's three conflict artefacts beside the file, if present."""
     parent, stem = absolute.parent, absolute.name
     mine = parent / ("%s.mine" % stem)
@@ -167,7 +174,7 @@ def _conflict_files(absolute: Path):
     return mine, revisions[0], revisions[-1]
 
 
-def _confirm(ctx, tool: str, path: str) -> bool:
+def _confirm(ctx: "Context", tool: str, path: str) -> bool:
     ctx.stdout.write("Launch '%s' [Y/n]? " % tool)
     ctx.stdout.flush()
     line = ctx.stdin.readline()

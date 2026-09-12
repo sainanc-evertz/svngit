@@ -199,3 +199,47 @@ def test_no_recipe_puts_the_shim_on_the_system_path():
         assert "bin/git" not in text.replace("svngit", ""), (
             "%s looks like it installs a `git` binary" % path
         )
+
+
+# ----------------------------------------------------------------------
+# formatting and typing
+# ----------------------------------------------------------------------
+def _tool(name):
+    """The dev tool from this project's venv, if it is installed."""
+    import shutil
+
+    candidate = ROOT / ".venv" / "bin" / name
+    return str(candidate) if candidate.exists() else shutil.which(name)
+
+
+@pytest.mark.skipif(_tool("black") is None, reason="black is not installed")
+def test_source_is_black_formatted():
+    result = subprocess.run(
+        [
+            _tool("black"),
+            "--check",
+            "--quiet",
+            "src",
+            "tests",
+            "docs/demo/render_svg.py",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, (
+        "run `black src tests docs/demo/render_svg.py`\n"
+        + result.stdout
+        + result.stderr
+    )
+
+
+@pytest.mark.skipif(_tool("mypy") is None, reason="mypy is not installed")
+def test_package_type_checks_strictly():
+    """The package is checked under `mypy --strict`.
+
+    Kept as a test because the value is in it staying clean: strict mode is
+    easy to satisfy once and easy to erode one untyped helper at a time.
+    """
+    result = subprocess.run([_tool("mypy")], cwd=ROOT, capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr

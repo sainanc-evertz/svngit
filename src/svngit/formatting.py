@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import difflib
 from datetime import datetime
-from typing import Iterable, List, Optional, Sequence
+from typing import Callable, Iterable, List, Optional, Sequence, Tuple
 
 from .colour import Palette, paint_porcelain
 from .state import LocalCommit
@@ -139,7 +139,7 @@ def format_long(
     ahead: int = 0,
     behind: int = 0,
     pending: Sequence[LocalCommit] = (),
-    display=lambda p: p,
+    display: Callable[[str], str] = lambda p: p,
     palette: Optional[Palette] = None,
 ) -> List[str]:
     palette = palette or Palette.off()
@@ -277,7 +277,7 @@ def _is_binary(data: bytes) -> bool:
     return b"\x00" in data[:8000]
 
 
-def format_diffstat(files: Iterable[tuple]) -> List[str]:
+def format_diffstat(files: Iterable[Tuple[str, int, int]]) -> List[str]:
     """files: iterable of (path, insertions, deletions)."""
     rows = list(files)
     if not rows:
@@ -299,7 +299,7 @@ def format_diffstat(files: Iterable[tuple]) -> List[str]:
     return lines
 
 
-def count_diff_lines(diff_text: str) -> tuple:
+def count_diff_lines(diff_text: str) -> Tuple[int, int]:
     insertions = deletions = 0
     for line in diff_text.splitlines():
         if line.startswith("+") and not line.startswith("+++"):

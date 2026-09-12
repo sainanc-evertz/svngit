@@ -11,34 +11,39 @@ makes `git commit` talk to the server directly.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Iterator, Tuple
+
 import getpass
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Set
 
 from .. import formatting, hunks as hunks_mod, status as status_mod
-from ..cliargs import no_effect, parse, refuse
+from ..cliargs import Options, no_effect, parse, refuse
 from ..errors import SvnGitError, UsageError
-from ..state import ADD, DELETE, Change, LocalCommit, make_commit_id, now
+from ..state import ADD, Change, DELETE, IndexEntry, LocalCommit, make_commit_id, now
 from ..status import hash_file
+
+if TYPE_CHECKING:  # pragma: no cover
+    from ..context import Context
 
 DEFERRED = "deferred"
 IMMEDIATE = "immediate"
 
 
-def commit_mode(ctx) -> str:
+def commit_mode(ctx: "Context") -> str:
     mode = ctx.state.get_config("svngit.commitmode", DEFERRED)
     if mode not in (DEFERRED, IMMEDIATE):
         raise SvnGitError(
             "svngit.commitmode must be 'deferred' or 'immediate', got %r" % mode
         )
-    return mode
+    return str(mode)
 
 
 # ----------------------------------------------------------------------
 # commit
 # ----------------------------------------------------------------------
-def cmd_commit(ctx, argv: List[str]) -> int:
+def cmd_commit(ctx: "Context", argv: List[str]) -> int:
     opts = parse(
         argv,
         flags=[
@@ -100,7 +105,7 @@ def cmd_commit(ctx, argv: List[str]) -> int:
     return _commit_deferred(ctx, message, index, opts)
 
 
-def _stage_all_tracked(ctx) -> None:
+def _stage_all_tracked(ctx: "Context") -> None:
     """`git commit -a`: stage every tracked modification and deletion."""
     from .workspace import _stage_one
 
@@ -112,7 +117,7 @@ def _stage_all_tracked(ctx) -> None:
     ctx.state.save()
 
 
-def _report_nothing_to_commit(ctx, report) -> None:
+def _report_nothing_to_commit(ctx: "Context", report: status_mod.StatusReport) -> None:
     ctx.echo("On branch %s" % ctx.branch)
     if report.unstaged or report.untracked:
         ctx.echo('no changes added to commit (use "git add" and/or "git commit -a")')
@@ -120,7 +125,7 @@ def _report_nothing_to_commit(ctx, report) -> None:
         ctx.echo("nothing to commit, working tree clean")
 
 
-def _add_signoff(ctx, message: str, opts) -> str:
+def _add_signoff(ctx: "Context", message: str, opts: Options) -> str:
     """Append git's Signed-off-by trailer, if it is not already there."""
     author = _author(ctx, opts)
     trailer = "Signed-off-by: %s" % formatting.author_line(author, ctx.info.repos_uuid)
@@ -139,7 +144,9 @@ def _add_signoff(ctx, message: str, opts) -> str:
     return body + separator + trailer + "\n"
 
 
-def _resolve_message(ctx, opts, index) -> str:
+def _resolve_message(
+    ctx: "Context", opts: Options, index: Dict[str, IndexEntry]
+) -> str:
     message = opts.first("message", "m")
     if message is not None:
         return str(message)
@@ -162,7 +169,7 @@ def _resolve_message(ctx, opts, index) -> str:
     return _edit_message(ctx, index)
 
 
-def _edit_message(ctx, index) -> str:
+def _edit_message(ctx: "Context", index: Dict[str, IndexEntry]) -> str:
     from .. import editor as editor_mod
 
     if editor_mod.find_editor() is None and getattr(ctx, "edit_hook", None) is None:
@@ -188,7 +195,9 @@ def _edit_message(ctx, index) -> str:
     return editor_mod.strip_comments(raw).strip()
 
 
-def _commit_deferred(ctx, message: str, index, opts) -> int:
+def _commit_deferred(
+    ctx: "Context", message: str, index: Dict[str, IndexEntry], opts: Options
+) -> int:
     # `git add` already copied each staged file into the object store, so the
     # commit records what was staged rather than whatever is on disk now.
     changes = [
@@ -219,14 +228,16 @@ def _commit_deferred(ctx, message: str, index, opts) -> int:
     return 0
 
 
-def _clear_committed(ctx, changes) -> None:
+def _clear_committed(ctx: "Context", changes: Sequence[Change]) -> None:
     """Empty the index of what was just committed, keeping anything that was
     not -- notably paths recorded with `git add -N`."""
     for change in changes:
         ctx.state.unstage(change.path)
 
 
-def _commit_immediate(ctx, message: str, paths: Sequence[str], opts) -> int:
+def _commit_immediate(
+    ctx: "Context", message: str, paths: Sequence[str], opts: Options
+) -> int:
     targets = _commit_targets(ctx, paths)
     index = ctx.state.index
     with _staged_content_on_disk(ctx, index):
@@ -252,7 +263,9 @@ def _commit_immediate(ctx, message: str, paths: Sequence[str], opts) -> int:
 
 
 @contextmanager
-def _staged_content_on_disk(ctx, index):
+def _staged_content_on_disk(
+    ctx: "Context", index: Dict[str, IndexEntry]
+) -> Iterator[None]:
     """Swap the staged content onto disk for the duration of a commit.
 
     `svn commit` sends whatever is in the working copy, but git commits what
@@ -277,23 +290,25 @@ def _staged_content_on_disk(ctx, index):
         yield
     finally:
         for path, blob in original.items():
+            if blob is None:
+                continue  # nothing was swapped out for this path
             ctx.abs_path(path).write_bytes(objects.read(blob))
 
 
-def _author(ctx, opts) -> str:
+def _author(ctx: "Context", opts: Options) -> str:
     explicit = opts.first("author")
     if explicit:
         return str(explicit)
     configured = ctx.state.get_config("user.name")
     if configured:
-        return configured
+        return str(configured)
     try:
         return getpass.getuser()
     except Exception:
         return "unknown"
 
 
-def _summarise(ctx, changes: Sequence[Change]) -> List[str]:
+def _summarise(ctx: "Context", changes: Sequence[Change]) -> List[str]:
     """git's post-commit summary: file count, line counts, mode changes.
 
     Counted from the staged blobs against their pristine copies, not from
@@ -322,7 +337,7 @@ def _summarise(ctx, changes: Sequence[Change]) -> List[str]:
     return lines
 
 
-def _count_staged_lines(ctx, change: Change) -> tuple:
+def _count_staged_lines(ctx: "Context", change: Change) -> Tuple[int, int]:
     """Lines added and removed by one staged change, versus its BASE."""
     objects = ctx.state.objects
     new = objects.read(change.blob) if change.blob else b""
@@ -354,7 +369,7 @@ def _parse_committed_revision(output: str) -> Optional[int]:
     return None
 
 
-def _amend(ctx, opts) -> int:
+def _amend(ctx: "Context", opts: Options) -> int:
     commits = ctx.state.commits
     if commits:
         commit = commits[-1]
@@ -412,7 +427,7 @@ def _amend(ctx, opts) -> int:
     return 0
 
 
-def _commit_targets(ctx, paths: Sequence[str]) -> List[str]:
+def _commit_targets(ctx: "Context", paths: Sequence[str]) -> List[str]:
     """Expand staged paths into svn commit targets.
 
     Subversion refuses to commit a file whose parent directory is itself
@@ -435,7 +450,7 @@ def _commit_targets(ctx, paths: Sequence[str]) -> List[str]:
 # ----------------------------------------------------------------------
 # push
 # ----------------------------------------------------------------------
-def cmd_push(ctx, argv: List[str]) -> int:
+def cmd_push(ctx: "Context", argv: List[str]) -> int:
     opts = parse(
         argv,
         flags=[
@@ -497,7 +512,7 @@ def cmd_push(ctx, argv: List[str]) -> int:
     return _replay(ctx, commits, quiet=opts.has("quiet", "q"))
 
 
-def _check_up_to_date(ctx, force: bool) -> None:
+def _check_up_to_date(ctx: "Context", force: bool) -> None:
     try:
         head = ctx.svn.info(str(ctx.wc_root), revision="HEAD").revision
     except Exception:
@@ -511,7 +526,7 @@ def _check_up_to_date(ctx, force: bool) -> None:
         )
 
 
-def _replay(ctx, commits: List[LocalCommit], quiet: bool = False) -> int:
+def _replay(ctx: "Context", commits: List[LocalCommit], quiet: bool = False) -> int:
     """Push each queued commit as its own Subversion revision.
 
     Before touching anything we snapshot the current content of every path the
@@ -581,7 +596,7 @@ def _replay(ctx, commits: List[LocalCommit], quiet: bool = False) -> int:
     return 0
 
 
-def _refresh_base_revision(ctx) -> None:
+def _refresh_base_revision(ctx: "Context") -> None:
     """Bring the working copy's BASE up to the revision we just created.
 
     `svn commit` bumps only the committed paths; the working copy root keeps
@@ -597,7 +612,7 @@ def _refresh_base_revision(ctx) -> None:
         ctx._info = None  # force the next read to see the new revision
 
 
-def _materialise(ctx, commit: LocalCommit) -> None:
+def _materialise(ctx: "Context", commit: LocalCommit) -> None:
     """Put the working copy into the state this commit recorded."""
     objects = ctx.state.objects
     known = {e.path: e for e in status_mod.compute(ctx).entries}
@@ -636,7 +651,7 @@ def _materialise(ctx, commit: LocalCommit) -> None:
             )
 
 
-def _restore(ctx, snapshot: Dict[str, Optional[str]]) -> None:
+def _restore(ctx: "Context", snapshot: Dict[str, Optional[str]]) -> None:
     """Put back the working copy content captured before the replay."""
     objects = ctx.state.objects
     for path, blob in snapshot.items():
@@ -656,7 +671,7 @@ def _restore(ctx, snapshot: Dict[str, Optional[str]]) -> None:
 # ----------------------------------------------------------------------
 # pull / fetch
 # ----------------------------------------------------------------------
-def cmd_pull(ctx, argv: List[str]) -> int:
+def cmd_pull(ctx: "Context", argv: List[str]) -> int:
     opts = parse(
         argv,
         flags=[
@@ -736,7 +751,7 @@ def cmd_pull(ctx, argv: List[str]) -> int:
     return 0
 
 
-def cmd_fetch(ctx, argv: List[str]) -> int:
+def cmd_fetch(ctx: "Context", argv: List[str]) -> int:
     opts = parse(
         argv,
         flags=[

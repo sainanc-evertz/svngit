@@ -383,6 +383,14 @@ brew install subversion     # macOS
 apt install subversion      # Debian/Ubuntu
 ```
 
+The package is formatted with **black** and type-checked under
+**`mypy --strict`**, both enforced by the suite rather than left to a habit:
+
+```bash
+black src tests docs/demo/render_svg.py
+mypy
+```
+
 To rebuild the images in this README:
 
 ```bash
