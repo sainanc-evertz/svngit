@@ -71,7 +71,9 @@ def test_commit_signoff_is_not_duplicated(harness):
     harness.set_status([("a.txt", "modified")])
     harness.run("add", "a.txt")
     harness.ctx.state.set_config("user.name", "alice")
-    harness.run("commit", "-s", "-m", "a change\n\nSigned-off-by: alice <alice@2b1f4c50.svn>")
+    harness.run(
+        "commit", "-s", "-m", "a change\n\nSigned-off-by: alice <alice@2b1f4c50.svn>"
+    )
     assert harness.ctx.state.commits[0].message.count("Signed-off-by:") == 1
 
 
@@ -131,7 +133,7 @@ def test_blame_L_limits_the_line_range(harness):
         '<?xml version="1.0"?><blame><target path="a.txt">'
         + "".join(
             '<entry line-number="%d"><commit revision="%d"><author>a</author>'
-            '<date>2026-03-01T10:00:00.000000Z</date></commit></entry>' % (n, n)
+            "<date>2026-03-01T10:00:00.000000Z</date></commit></entry>" % (n, n)
             for n in (1, 2, 3)
         )
         + "</target></blame>",
@@ -145,7 +147,9 @@ def test_blame_L_limits_the_line_range(harness):
 
 def test_blame_w_ignores_whitespace(harness):
     harness.write("a.txt", "x\n")
-    harness.svn.respond("blame", "<blame><target path='a.txt'></target></blame>", first=True)
+    harness.svn.respond(
+        "blame", "<blame><target path='a.txt'></target></blame>", first=True
+    )
     harness.run("blame", "-w", "a.txt")
     assert "-x -w" in " ".join(harness.svn.argv_for("blame"))
 
@@ -212,7 +216,9 @@ def test_rev_parse_verify_quiet_says_nothing(harness):
 def test_branch_copy_makes_a_server_side_copy(harness):
     harness.svn.respond(
         lambda argv: argv[1] == "info" and "branches/copy-of" in " ".join(argv),
-        "", returncode=1, first=True,
+        "",
+        returncode=1,
+        first=True,
     )
     harness.run("branch", "-c", "copy-of")
     argv = " ".join(harness.svn.argv_for("copy"))
@@ -222,7 +228,9 @@ def test_branch_copy_makes_a_server_side_copy(harness):
 def test_branch_quiet_suppresses_the_note(harness):
     harness.svn.respond(
         lambda argv: argv[1] == "info" and "branches/new" in " ".join(argv),
-        "", returncode=1, first=True,
+        "",
+        returncode=1,
+        first=True,
     )
     harness.run("branch", "-q", "new")
     assert harness.err.strip() == ""
@@ -230,7 +238,9 @@ def test_branch_quiet_suppresses_the_note(harness):
 
 def test_checkout_detach_updates_to_a_revision(harness):
     harness.run("checkout", "--detach", "r7")
-    assert "update -r 7" in " ".join(harness.svn.argv_for("update")).replace("--non-interactive ", "")
+    assert "update -r 7" in " ".join(harness.svn.argv_for("update")).replace(
+        "--non-interactive ", ""
+    )
 
 
 def test_tag_contains_filters_by_creation_revision(harness):
@@ -254,16 +264,16 @@ def test_tag_contains_filters_by_creation_revision(harness):
     # or it shadows it.
     harness.svn.respond(
         tag_log,
-        log_xml([{"revision": 20, "paths": [{"action": "A", "path": "/tags/new"}]}]).replace(
-            'kind="file"', 'kind="dir" copyfrom-rev="18"'
-        ),
+        log_xml(
+            [{"revision": 20, "paths": [{"action": "A", "path": "/tags/new"}]}]
+        ).replace('kind="file"', 'kind="dir" copyfrom-rev="18"'),
         first=True,
     )
     harness.svn.respond(
         responder,
-        log_xml([{"revision": 5, "paths": [{"action": "A", "path": "/tags/old"}]}]).replace(
-            'kind="file"', 'kind="dir" copyfrom-rev="3"'
-        ),
+        log_xml(
+            [{"revision": 5, "paths": [{"action": "A", "path": "/tags/old"}]}]
+        ).replace('kind="file"', 'kind="dir" copyfrom-rev="3"'),
         first=True,
     )
     harness.run("tag", "--contains", "r10")

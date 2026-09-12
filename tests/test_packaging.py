@@ -78,7 +78,8 @@ def test_shim_dispatches_on_both_markers():
 def test_posix_shim_is_valid_shell():
     result = subprocess.run(
         ["sh", "-n", str(shim_directory() / POSIX_SHIM)],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     assert result.returncode == 0, result.stderr
 
@@ -134,7 +135,9 @@ def test_generated_completions_parse(shell, checker, tmp_path):
         pytest.skip("%s is not installed" % checker)
     script = tmp_path / ("completion.%s" % shell)
     script.write_text(completion.generate(shell))
-    result = subprocess.run([checker, "-n", str(script)], capture_output=True, text=True)
+    result = subprocess.run(
+        [checker, "-n", str(script)], capture_output=True, text=True
+    )
     assert result.returncode == 0, result.stderr
 
 
@@ -161,9 +164,10 @@ def test_recipes_track_the_project_version(path, pattern):
     text = (ROOT / path).read_text()
     match = re.search(pattern, text, re.M)
     assert match, "could not find a version in %s" % path
-    assert match.group(1) == VERSION, (
-        "%s is pinned to %s but the project is at %s"
-        % (path, match.group(1), VERSION)
+    assert match.group(1) == VERSION, "%s is pinned to %s but the project is at %s" % (
+        path,
+        match.group(1),
+        VERSION,
     )
 
 

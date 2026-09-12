@@ -70,18 +70,45 @@ def cmd_grep(ctx, argv: List[str]) -> int:
     opts = parse(
         argv,
         flags=[
-            "ignore-case", "i", "line-number", "n", "files-with-matches", "l",
-            "files-without-match", "L", "count", "c", "word-regexp", "w",
-            "extended-regexp", "E", "fixed-strings", "F", "basic-regexp", "G",
-            "invert-match", "v", "no-filename", "h", "untracked", "I",
-            "cached", "name-only", "quiet", "q",
+            "ignore-case",
+            "i",
+            "line-number",
+            "n",
+            "files-with-matches",
+            "l",
+            "files-without-match",
+            "L",
+            "count",
+            "c",
+            "word-regexp",
+            "w",
+            "extended-regexp",
+            "E",
+            "fixed-strings",
+            "F",
+            "basic-regexp",
+            "G",
+            "invert-match",
+            "v",
+            "no-filename",
+            "h",
+            "untracked",
+            "I",
+            "cached",
+            "name-only",
+            "quiet",
+            "q",
         ],
         values=["max-count", "m"],
     )
-    refuse("grep", opts, {
-        "cached": "there is no index of file content to search; `git grep` here "
-                  "searches the working copy.",
-    })
+    refuse(
+        "grep",
+        opts,
+        {
+            "cached": "there is no index of file content to search; `git grep` here "
+            "searches the working copy.",
+        },
+    )
     # -E/-G select POSIX regex dialects; Python's `re` is a superset of both,
     # so the pattern behaves the same either way.
     if not opts.positionals and not opts.after_dashdash:
@@ -107,7 +134,9 @@ def cmd_grep(ctx, argv: List[str]) -> int:
     counting = opts.has("count", "c")
     show_filename = not opts.has("no-filename", "h")
     number = opts.has("line-number", "n")
-    limit = int(str(opts.first("max-count", "m"))) if opts.has("max-count", "m") else None
+    limit = (
+        int(str(opts.first("max-count", "m"))) if opts.has("max-count", "m") else None
+    )
 
     found_any = False
     for absolute in tracked_files(ctx, wc_paths, opts.has("untracked")):
@@ -120,13 +149,17 @@ def cmd_grep(ctx, argv: List[str]) -> int:
             if not invert and pattern.search(data.decode("latin-1")):
                 found_any = True
                 if not opts.has("quiet", "q"):
-                    ctx.echo("Binary file %s matches" % ctx.display_path(
-                        absolute.relative_to(ctx.wc_root).as_posix()))
+                    ctx.echo(
+                        "Binary file %s matches"
+                        % ctx.display_path(absolute.relative_to(ctx.wc_root).as_posix())
+                    )
             continue
 
         display = ctx.display_path(absolute.relative_to(ctx.wc_root).as_posix())
         matches = []
-        for index, line in enumerate(data.decode("utf-8", errors="replace").splitlines(), 1):
+        for index, line in enumerate(
+            data.decode("utf-8", errors="replace").splitlines(), 1
+        ):
             if bool(pattern.search(line)) != invert:
                 matches.append((index, line))
                 if limit and len(matches) >= limit:
@@ -146,7 +179,11 @@ def cmd_grep(ctx, argv: List[str]) -> int:
         if show_names_only:
             ctx.echo(display)
         elif counting:
-            ctx.echo("%s:%d" % (display, len(matches)) if show_filename else str(len(matches)))
+            ctx.echo(
+                "%s:%d" % (display, len(matches))
+                if show_filename
+                else str(len(matches))
+            )
         else:
             for index, line in matches:
                 parts = []

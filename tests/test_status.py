@@ -93,7 +93,11 @@ def test_report_partitions_entries(harness):
     harness.write("staged.txt", "x\n")
     harness.write("dirty.txt", "x\n")
     harness.set_status(
-        [("staged.txt", "modified"), ("dirty.txt", "modified"), ("new.txt", "unversioned")]
+        [
+            ("staged.txt", "modified"),
+            ("dirty.txt", "modified"),
+            ("new.txt", "unversioned"),
+        ]
     )
     harness.ctx.state.stage("staged.txt", MODIFY, harness.ctx.snapshot("staged.txt"))
     report = status_mod.compute(harness.ctx)

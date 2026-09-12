@@ -161,7 +161,7 @@ def parse_patch(text: str, default_path: Optional[str] = None) -> List[FilePatch
         if raw.startswith("Index: "):
             # svn's own diff header. Its `---`/`+++` lines carry a revision
             # annotation, so the Index line is the cleaner source of the path.
-            current = FilePatch(_header_path(raw[len("Index: "):]))
+            current = FilePatch(_header_path(raw[len("Index: ") :]))
             files.append(current)
             hunk = None
             continue

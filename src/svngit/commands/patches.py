@@ -19,7 +19,6 @@ from .. import formatting, patch as patch_mod, revisions as rev_mod
 from ..cliargs import no_effect, parse, refuse
 from ..errors import SvnGitError, UsageError
 
-
 #: End-of-patch marker in mbox format. The trailing space is significant: it
 #: is what separates the signature from a deletion of a line reading "-".
 SIGNATURE = "-- "
@@ -32,26 +31,47 @@ def cmd_apply(ctx, argv: List[str]) -> int:
     opts = parse(
         argv,
         flags=[
-            "check", "stat", "summary", "reverse", "R", "index", "cached",
-            "3way", "3", "verbose", "v", "quiet", "q", "numstat",
+            "check",
+            "stat",
+            "summary",
+            "reverse",
+            "R",
+            "index",
+            "cached",
+            "3way",
+            "3",
+            "verbose",
+            "v",
+            "quiet",
+            "q",
+            "numstat",
         ],
         values=["p", "directory", "exclude", "include"],
     )
-    refuse("apply", opts, {
-        "3way": "a three-way apply needs the blobs the patch was made against, "
-                "which a Subversion working copy does not store.",
-        "3": "a three-way apply needs the blobs the patch was made against, "
-             "which a Subversion working copy does not store.",
-        "cached": "there is no index to apply to separately; drop --cached to "
-                  "apply to the working copy.",
-    })
-    no_effect(ctx, "apply", opts, {
-        "index": "the patch is applied to the working copy; stage it afterwards "
-                 "with `git add`.",
-        "exclude": "path filtering is not applied.",
-        "include": "path filtering is not applied.",
-        "directory": "paths are taken from the patch as given.",
-    })
+    refuse(
+        "apply",
+        opts,
+        {
+            "3way": "a three-way apply needs the blobs the patch was made against, "
+            "which a Subversion working copy does not store.",
+            "3": "a three-way apply needs the blobs the patch was made against, "
+            "which a Subversion working copy does not store.",
+            "cached": "there is no index to apply to separately; drop --cached to "
+            "apply to the working copy.",
+        },
+    )
+    no_effect(
+        ctx,
+        "apply",
+        opts,
+        {
+            "index": "the patch is applied to the working copy; stage it afterwards "
+            "with `git add`.",
+            "exclude": "path filtering is not applied.",
+            "include": "path filtering is not applied.",
+            "directory": "paths are taken from the patch as given.",
+        },
+    )
 
     text = _read_patch(opts.paths)
     strip = int(str(opts.first("p", default="1")))
@@ -71,7 +91,11 @@ def cmd_apply(ctx, argv: List[str]) -> int:
     results = []
     for file_patch in patches:
         absolute = ctx.abs_path(file_patch.path)
-        current = absolute.read_text(encoding="utf-8", errors="replace") if absolute.is_file() else ""
+        current = (
+            absolute.read_text(encoding="utf-8", errors="replace")
+            if absolute.is_file()
+            else ""
+        )
         try:
             results.append((absolute, patch_mod.apply_file_patch(current, file_patch)))
         except patch_mod.PatchError as exc:
@@ -79,16 +103,20 @@ def cmd_apply(ctx, argv: List[str]) -> int:
 
     if opts.has("check"):
         if not opts.has("quiet", "q"):
-            ctx.echo("Patch applies cleanly to %d file%s."
-                     % (len(results), "" if len(results) == 1 else "s"))
+            ctx.echo(
+                "Patch applies cleanly to %d file%s."
+                % (len(results), "" if len(results) == 1 else "s")
+            )
         return 0
 
     for absolute, content in results:
         absolute.parent.mkdir(parents=True, exist_ok=True)
         absolute.write_text(content, encoding="utf-8")
         if opts.has("verbose", "v"):
-            ctx.echo("Applied patch to '%s' cleanly."
-                     % ctx.display_path(absolute.relative_to(ctx.wc_root).as_posix()))
+            ctx.echo(
+                "Applied patch to '%s' cleanly."
+                % ctx.display_path(absolute.relative_to(ctx.wc_root).as_posix())
+            )
     return 0
 
 
@@ -138,17 +166,32 @@ def _report(ctx, patches, opts) -> int:
 def cmd_format_patch(ctx, argv: List[str]) -> int:
     opts = parse(
         argv,
-        flags=["stdout", "numbered", "n", "no-numbered", "N", "quiet", "q", "signoff", "s"],
+        flags=[
+            "stdout",
+            "numbered",
+            "n",
+            "no-numbered",
+            "N",
+            "quiet",
+            "q",
+            "signoff",
+            "s",
+        ],
         values=["output-directory", "o", "start-number", "subject-prefix", "max-count"],
         allow_numeric=True,
         numeric_key="count",
     )
-    no_effect(ctx, "format-patch", opts, {
-        "no-numbered": "output files are always numbered, since a range has no "
-                       "other stable ordering.",
-        "N": "output files are always numbered, since a range has no other "
-             "stable ordering.",
-    })
+    no_effect(
+        ctx,
+        "format-patch",
+        opts,
+        {
+            "no-numbered": "output files are always numbered, since a range has no "
+            "other stable ordering.",
+            "N": "output files are always numbered, since a range has no other "
+            "stable ordering.",
+        },
+    )
     # --numbered is the only behaviour, so it needs no handling.
     spec = opts.positionals[0] if opts.positionals else None
     count = opts.first("count", "max-count")
@@ -194,7 +237,11 @@ def cmd_format_patch(ctx, argv: List[str]) -> int:
 
 def _mbox(ctx, entry, prefix: str, number: int, total: int, opts) -> str:
     """One revision as a git-am-compatible patch."""
-    subject = entry.message.strip().splitlines()[0] if entry.message.strip() else "(no message)"
+    subject = (
+        entry.message.strip().splitlines()[0]
+        if entry.message.strip()
+        else "(no message)"
+    )
     rest = "\n".join(entry.message.strip().splitlines()[1:]).strip()
     author = formatting.author_line(entry.author, ctx.info.repos_uuid)
     tag = "%s %d/%d" % (prefix, number, total) if total > 1 else prefix
@@ -214,7 +261,9 @@ def _mbox(ctx, entry, prefix: str, number: int, total: int, opts) -> str:
 
     diff = ctx.svn.run("diff", "-c", str(entry.revision), str(ctx.wc_root), check=False)
     lines.append(
-        patch_mod.to_git_headers(diff.stdout, ctx.wc_root).rstrip("\n") if diff.ok else ""
+        patch_mod.to_git_headers(diff.stdout, ctx.wc_root).rstrip("\n")
+        if diff.ok
+        else ""
     )
     lines.extend([SIGNATURE, "svngit"])
     return "\n".join(lines) + "\n"
@@ -237,10 +286,14 @@ def cmd_archive(ctx, argv: List[str]) -> int:
         flags=["verbose", "v", "list", "l"],
         values=["format", "o", "output", "prefix", "remote"],
     )
-    refuse("archive", opts, {
-        "remote": "there is no archive service to ask; svngit exports from the "
-                  "repository directly, which needs no --remote.",
-    })
+    refuse(
+        "archive",
+        opts,
+        {
+            "remote": "there is no archive service to ask; svngit exports from the "
+            "repository directly, which needs no --remote.",
+        },
+    )
     if opts.has("list", "l"):
         for name in ("tar", "tar.gz", "tgz", "zip"):
             ctx.echo(name)
@@ -258,12 +311,18 @@ def cmd_archive(ctx, argv: List[str]) -> int:
     with tempfile.TemporaryDirectory() as work:
         exported = Path(work) / (prefix or "archive")
         ctx.svn.run(
-            "export", "-r", str(revision), "--force",
-            "%s@%d" % (ctx.info.url, revision), str(exported),
+            "export",
+            "-r",
+            str(revision),
+            "--force",
+            "%s@%d" % (ctx.info.url, revision),
+            str(exported),
             mutating=False,
         )
         if output is None:
-            raise UsageError("git archive needs -o <file> (writing to a terminal is refused)")
+            raise UsageError(
+                "git archive needs -o <file> (writing to a terminal is refused)"
+            )
         target = Path(str(output)).expanduser()
         _write_archive(exported, target, fmt, prefix)
 
@@ -288,7 +347,9 @@ def _write_archive(source: Path, target: Path, fmt: str, prefix: str) -> None:
             for path in sorted(source.rglob("*")):
                 if path.is_file():
                     inner = path.relative_to(source)
-                    archive.write(path, str(Path(prefix) / inner) if prefix else str(inner))
+                    archive.write(
+                        path, str(Path(prefix) / inner) if prefix else str(inner)
+                    )
         return
 
     mode = "w:gz" if fmt in ("tar.gz", "tgz") else "w"
@@ -296,4 +357,6 @@ def _write_archive(source: Path, target: Path, fmt: str, prefix: str) -> None:
         for path in sorted(source.rglob("*")):
             if path.is_file():
                 inner = path.relative_to(source)
-                archive.add(path, arcname=str(Path(prefix) / inner) if prefix else str(inner))
+                archive.add(
+                    path, arcname=str(Path(prefix) / inner) if prefix else str(inner)
+                )

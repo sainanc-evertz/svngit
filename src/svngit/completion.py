@@ -34,7 +34,9 @@ def _describe(name: str) -> str:
 
 def generate(shell: str) -> str:
     if shell not in SHELLS:
-        raise ValueError("unknown shell %r (choose from %s)" % (shell, ", ".join(SHELLS)))
+        raise ValueError(
+            "unknown shell %r (choose from %s)" % (shell, ", ".join(SHELLS))
+        )
     return {"bash": _bash, "zsh": _zsh, "fish": _fish}[shell]()
 
 
@@ -161,23 +163,25 @@ def _fish() -> str:
             "complete -c svngit -n __fish_use_subcommand -a %s -d '%s'"
             % (name, _describe(name).replace("'", ""))
         )
-    lines.extend([
-        "",
-        "complete -c svngit -l help -d 'show the command list'",
-        "complete -c svngit -l version -d 'show the version'",
-        "complete -c svngit -l dry-run -d 'print the svn commands instead of running them'",
-        "complete -c svngit -l trace -d 'print every svn command as it runs'",
-        "complete -c svngit -l shim-path -d 'print the directory holding the git shim'",
-        "complete -c svngit -l completion -d 'print a completion script' "
-        "-xa 'bash zsh fish'",
-        "",
-        "# Branch names cost a round trip to the server, so only offer them",
-        "# for the commands that take one.",
-        "complete -c svngit -n '__fish_seen_subcommand_from checkout switch branch "
-        "merge cherry-pick' -a \"(svngit branch 2>/dev/null | string trim | string "
-        "replace -r '^\\\\* ' '')\"",
-        "",
-        "complete -c svngit -n '__fish_seen_subcommand_from add rm mv restore diff "
-        "grep blame' -F",
-    ])
+    lines.extend(
+        [
+            "",
+            "complete -c svngit -l help -d 'show the command list'",
+            "complete -c svngit -l version -d 'show the version'",
+            "complete -c svngit -l dry-run -d 'print the svn commands instead of running them'",
+            "complete -c svngit -l trace -d 'print every svn command as it runs'",
+            "complete -c svngit -l shim-path -d 'print the directory holding the git shim'",
+            "complete -c svngit -l completion -d 'print a completion script' "
+            "-xa 'bash zsh fish'",
+            "",
+            "# Branch names cost a round trip to the server, so only offer them",
+            "# for the commands that take one.",
+            "complete -c svngit -n '__fish_seen_subcommand_from checkout switch branch "
+            "merge cherry-pick' -a \"(svngit branch 2>/dev/null | string trim | string "
+            "replace -r '^\\\\* ' '')\"",
+            "",
+            "complete -c svngit -n '__fish_seen_subcommand_from add rm mv restore diff "
+            "grep blame' -F",
+        ]
+    )
     return "\n".join(lines) + "\n"

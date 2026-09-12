@@ -119,8 +119,7 @@ def render_line(text: str, y: float) -> str:
             )
         return (
             '<text %s><tspan fill="%s">$ </tspan>'
-            '<tspan fill="%s">%s</tspan></text>'
-            % (common, PROMPT, TEXT, escape(body))
+            '<tspan fill="%s">%s</tspan></text>' % (common, PROMPT, TEXT, escape(body))
         )
 
     return '<text %s fill="%s">%s</text>' % (common, TEXT, escape(text))
@@ -174,8 +173,21 @@ def render(lines, title: str = "") -> str:
         # Title bar: a rounded rect clipped to its top half by a plain one.
         '<path d="M0 %.0f V%.0f a%.0f %.0f 0 0 1 %.0f -%.0f H%.0f '
         'a%.0f %.0f 0 0 1 %.0f %.0f V%.0f Z" fill="%s"/>'
-        % (CHROME_HEIGHT, RADIUS, RADIUS, RADIUS, RADIUS, RADIUS,
-           width - RADIUS, RADIUS, RADIUS, RADIUS, RADIUS, CHROME_HEIGHT, CHROME),
+        % (
+            CHROME_HEIGHT,
+            RADIUS,
+            RADIUS,
+            RADIUS,
+            RADIUS,
+            RADIUS,
+            width - RADIUS,
+            RADIUS,
+            RADIUS,
+            RADIUS,
+            RADIUS,
+            CHROME_HEIGHT,
+            CHROME,
+        ),
     ]
     for index, colour in enumerate(DOTS):
         out.append(
@@ -188,9 +200,7 @@ def render(lines, title: str = "") -> str:
             % (width / 2, FONT, TITLE, escape(title))
         )
 
-    out.append(
-        '<g font-family="%s" font-size="%.1f">' % (FONT, FONT_SIZE)
-    )
+    out.append('<g font-family="%s" font-size="%.1f">' % (FONT, FONT_SIZE))
     for index, line in enumerate(lines):
         out.append(render_line(line, PAD_TOP + index * LINE_HEIGHT))
     out.append("</g></svg>")

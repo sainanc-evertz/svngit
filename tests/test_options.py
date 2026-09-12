@@ -13,7 +13,9 @@ import pathlib
 
 from svngit.commands import DEFAULT_BEHAVIOUR
 
-COMMANDS_DIR = pathlib.Path(__file__).resolve().parents[1] / "src" / "svngit" / "commands"
+COMMANDS_DIR = (
+    pathlib.Path(__file__).resolve().parents[1] / "src" / "svngit" / "commands"
+)
 PACKAGE_DIR = COMMANDS_DIR.parent
 
 
@@ -21,17 +23,25 @@ def _option_reads(tree) -> set:
     """Option names a module reads, via opts.* or refuse()/no_effect()."""
     names = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
-           and node.func.attr in ("has", "get", "first", "count", "negated"):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr in ("has", "get", "first", "count", "negated")
+        ):
             names |= {
-                a.value for a in node.args
+                a.value
+                for a in node.args
                 if isinstance(a, ast.Constant) and isinstance(a.value, str)
             }
-        if isinstance(node, ast.Call) and getattr(node.func, "id", "") in ("refuse", "no_effect"):
+        if isinstance(node, ast.Call) and getattr(node.func, "id", "") in (
+            "refuse",
+            "no_effect",
+        ):
             for arg in node.args:
                 if isinstance(arg, ast.Dict):
                     names |= {
-                        k.value for k in arg.keys
+                        k.value
+                        for k in arg.keys
                         if isinstance(k, ast.Constant) and isinstance(k.value, str)
                     }
     return names
@@ -60,7 +70,8 @@ def _declared_and_handled(path: pathlib.Path):
                 for kw in node.keywords:
                     if kw.arg in ("flags", "values") and isinstance(kw.value, ast.List):
                         declared |= {
-                            e.value for e in kw.value.elts
+                            e.value
+                            for e in kw.value.elts
                             if isinstance(e, ast.Constant) and isinstance(e.value, str)
                         }
         if declared:
@@ -94,7 +105,9 @@ def test_default_behaviour_entries_are_real_options():
             declared_anywhere |= {(name, option) for option in declared}
 
     stale = sorted(key for key in DEFAULT_BEHAVIOUR if key not in declared_anywhere)
-    assert not stale, "DEFAULT_BEHAVIOUR lists options that are not declared: %s" % stale
+    assert not stale, (
+        "DEFAULT_BEHAVIOUR lists options that are not declared: %s" % stale
+    )
 
 
 def test_every_default_behaviour_entry_explains_itself():

@@ -33,8 +33,10 @@ def revision_id(revision: int) -> str:
 def format_date(value: Optional[datetime]) -> str:
     if value is None:
         return "(unknown date)"
-    return value.strftime("%a %b %-d %H:%M:%S %Y %z") if _supports_dash_d() else value.strftime(
-        "%a %b %d %H:%M:%S %Y %z"
+    return (
+        value.strftime("%a %b %-d %H:%M:%S %Y %z")
+        if _supports_dash_d()
+        else value.strftime("%a %b %d %H:%M:%S %Y %z")
     )
 
 
@@ -70,7 +72,13 @@ def format_log_entry(
 ) -> List[str]:
     if oneline:
         ident = revision_id(entry.revision)
-        return ["%s %s" % (ident, entry.message.strip().splitlines()[0] if entry.message.strip() else "")]
+        return [
+            "%s %s"
+            % (
+                ident,
+                entry.message.strip().splitlines()[0] if entry.message.strip() else "",
+            )
+        ]
 
     lines = ["commit %s" % revision_id(entry.revision)]
     lines.append("Author: %s" % author_line(entry.author, uuid))
@@ -89,12 +97,17 @@ def format_log_entry(
     return lines
 
 
-def format_local_commit(commit: LocalCommit, uuid: str = "", oneline: bool = False) -> List[str]:
+def format_local_commit(
+    commit: LocalCommit, uuid: str = "", oneline: bool = False
+) -> List[str]:
     if oneline:
         return ["%s %s (not pushed)" % (commit.short_id, commit.summary)]
     lines = ["commit %s (local, not pushed)" % commit.id]
     lines.append("Author: %s" % author_line(commit.author, uuid))
-    lines.append("Date:   %s" % format_date(datetime.fromtimestamp(commit.timestamp).astimezone()))
+    lines.append(
+        "Date:   %s"
+        % format_date(datetime.fromtimestamp(commit.timestamp).astimezone())
+    )
     lines.append("")
     body = commit.message.strip("\n")
     lines.extend("    " + line if line else "" for line in body.splitlines())
@@ -133,7 +146,7 @@ def format_long(
     lines = ["On branch %s" % palette.paint(palette.branch, branch)]
     tracking = "Your working copy is at r%d." % revision
     if behind:
-        tracking += " %d revision%s available on the server (use \"git pull\")." % (
+        tracking += ' %d revision%s available on the server (use "git pull").' % (
             behind,
             "" if behind == 1 else "s",
         )
@@ -141,8 +154,12 @@ def format_long(
     if pending:
         lines.append("")
         lines.append(
-            "You have %d local commit%s not yet pushed (use \"git push\" to send %s to Subversion):"
-            % (len(pending), "" if len(pending) == 1 else "s", "it" if len(pending) == 1 else "them")
+            'You have %d local commit%s not yet pushed (use "git push" to send %s to Subversion):'
+            % (
+                len(pending),
+                "" if len(pending) == 1 else "s",
+                "it" if len(pending) == 1 else "them",
+            )
         )
         for commit in pending:
             lines.append("  %s %s" % (commit.short_id, commit.summary))
@@ -152,8 +169,12 @@ def format_long(
         lines.append("Unmerged paths:")
         lines.append('  (use "git add <file>..." to mark resolution)')
         for entry in report.unmerged:
-            lines.append("\t" + palette.paint(
-                palette.unmerged, "both modified:   %s" % display(entry.path)))
+            lines.append(
+                "\t"
+                + palette.paint(
+                    palette.unmerged, "both modified:   %s" % display(entry.path)
+                )
+            )
         lines.append("")
 
     staged = [e for e in report.staged if not e.unmerged]
@@ -161,18 +182,38 @@ def format_long(
         lines.append("Changes to be committed:")
         lines.append('  (use "git restore --staged <file>..." to unstage)')
         for entry in staged:
-            lines.append("\t" + palette.paint(palette.added, "%-16s %s" % (
-                STATUS_WORDS.get(entry.index, "modified") + ":", display(entry.path))))
+            lines.append(
+                "\t"
+                + palette.paint(
+                    palette.added,
+                    "%-16s %s"
+                    % (
+                        STATUS_WORDS.get(entry.index, "modified") + ":",
+                        display(entry.path),
+                    ),
+                )
+            )
         lines.append("")
 
     unstaged = [e for e in report.unstaged if not e.unmerged]
     if unstaged:
         lines.append("Changes not staged for commit:")
         lines.append('  (use "git add/rm <file>..." to update what will be committed)')
-        lines.append('  (use "git restore <file>..." to discard changes in working directory)')
+        lines.append(
+            '  (use "git restore <file>..." to discard changes in working directory)'
+        )
         for entry in unstaged:
-            lines.append("\t" + palette.paint(palette.changed, "%-16s %s" % (
-                STATUS_WORDS.get(entry.worktree, "modified") + ":", display(entry.path))))
+            lines.append(
+                "\t"
+                + palette.paint(
+                    palette.changed,
+                    "%-16s %s"
+                    % (
+                        STATUS_WORDS.get(entry.worktree, "modified") + ":",
+                        display(entry.path),
+                    ),
+                )
+            )
         lines.append("")
 
     if report.untracked:
@@ -186,7 +227,9 @@ def format_long(
         lines.append("nothing to commit, working tree clean")
     elif not staged and not report.unmerged:
         if unstaged or report.untracked:
-            lines.append('no changes added to commit (use "git add" and/or "git commit -a")')
+            lines.append(
+                'no changes added to commit (use "git add" and/or "git commit -a")'
+            )
 
     # Collapse the trailing blank line git would not print.
     while lines and lines[-1] == "":

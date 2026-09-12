@@ -20,22 +20,55 @@ from ..svnclient import parse_svn_date
 def cmd_log(ctx, argv: List[str]) -> int:
     opts = parse(
         argv,
-        flags=["oneline", "graph", "stat", "name-only", "name-status", "patch", "p", "reverse", "all", "decorate", "abbrev-commit", "no-merges", "follow", "no-color"],
-        values=["max-count", "n", "author", "grep", "since", "after", "until",
-                "before", "pretty", "format", "skip", "S", "G"],
+        flags=[
+            "oneline",
+            "graph",
+            "stat",
+            "name-only",
+            "name-status",
+            "patch",
+            "p",
+            "reverse",
+            "all",
+            "decorate",
+            "abbrev-commit",
+            "no-merges",
+            "follow",
+            "no-color",
+        ],
+        values=[
+            "max-count",
+            "n",
+            "author",
+            "grep",
+            "since",
+            "after",
+            "until",
+            "before",
+            "pretty",
+            "format",
+            "skip",
+            "S",
+            "G",
+        ],
         optional_values=["color"],
         allow_numeric=True,
     )
     revisions, paths = split_revisions_and_paths(ctx, opts.positionals)
     paths.extend(opts.after_dashdash)
 
-    no_effect(ctx, "log", opts, {
-        "graph": "Subversion history is linear, so there is nothing to draw.",
-        "decorate": "branch and tag names are directories, not refs, so revisions "
-                    "carry no decoration.",
-        "no-merges": "plain `svn log` does not mark which revisions were merges, "
-                     "so they cannot be filtered out.",
-    })
+    no_effect(
+        ctx,
+        "log",
+        opts,
+        {
+            "graph": "Subversion history is linear, so there is nothing to draw.",
+            "decorate": "branch and tag names are directories, not refs, so revisions "
+            "carry no decoration.",
+            "no-merges": "plain `svn log` does not mark which revisions were merges, "
+            "so they cannot be filtered out.",
+        },
+    )
 
     if paths:
         target = ctx.svn_target(ctx.to_wc_path(paths[0]))
@@ -69,7 +102,10 @@ def cmd_log(ctx, argv: List[str]) -> int:
     if opts.has("reverse"):
         entries = list(reversed(entries))
 
-    oneline = opts.has("oneline") or str(opts.first("pretty", "format", default="")) == "oneline"
+    oneline = (
+        opts.has("oneline")
+        or str(opts.first("pretty", "format", default="")) == "oneline"
+    )
     uuid = ctx.info.repos_uuid
 
     # Unpushed local commits sit on top of server history, exactly as they do
@@ -83,7 +119,10 @@ def cmd_log(ctx, argv: List[str]) -> int:
 
     for entry in entries:
         for line in formatting.format_log_entry(
-            entry, uuid, oneline=oneline, show_paths=opts.has("name-only", "name-status", "stat")
+            entry,
+            uuid,
+            oneline=oneline,
+            show_paths=opts.has("name-only", "name-status", "stat"),
         ):
             ctx.echo(colour_mod.paint_log_line(line, palette))
     return 0
@@ -117,7 +156,8 @@ def _pickaxe(ctx, entries, opts, target: str):
         if not result.ok:
             continue
         changed = [
-            line for line in result.stdout.splitlines()
+            line
+            for line in result.stdout.splitlines()
             if line.startswith(("+", "-")) and not line.startswith(("+++", "---"))
         ]
         if matcher is not None:
@@ -164,7 +204,10 @@ def cmd_show(ctx, argv: List[str]) -> int:
 
     palette = colour_mod.palette_for(ctx, opts)
     for line in formatting.format_log_entry(
-        entry, ctx.info.repos_uuid, oneline=opts.has("oneline"), show_paths=opts.has("name-only", "name-status", "stat")
+        entry,
+        ctx.info.repos_uuid,
+        oneline=opts.has("oneline"),
+        show_paths=opts.has("name-only", "name-status", "stat"),
     ):
         ctx.echo(colour_mod.paint_log_line(line, palette))
 
@@ -185,15 +228,31 @@ def cmd_show(ctx, argv: List[str]) -> int:
 def cmd_diff(ctx, argv: List[str]) -> int:
     opts = parse(
         argv,
-        flags=["cached", "staged", "stat", "name-only", "name-status", "numstat", "shortstat", "no-color", "text", "binary"],
+        flags=[
+            "cached",
+            "staged",
+            "stat",
+            "name-only",
+            "name-status",
+            "numstat",
+            "shortstat",
+            "no-color",
+            "text",
+            "binary",
+        ],
         values=["unified", "U", "diff-filter"],
         optional_values=["color"],
     )
-    no_effect(ctx, "diff", opts, {
-        "binary": "Subversion diffs cannot carry binary content.",
-        "text": "binary files are reported as differing, never inlined.",
-        "diff-filter": "the diff is not filtered by change type.",
-    })
+    no_effect(
+        ctx,
+        "diff",
+        opts,
+        {
+            "binary": "Subversion diffs cannot carry binary content.",
+            "text": "binary files are reported as differing, never inlined.",
+            "diff-filter": "the diff is not filtered by change type.",
+        },
+    )
     context = opts.first("unified", "U")
 
     revisions, paths = split_revisions_and_paths(ctx, opts.positionals)
@@ -203,7 +262,11 @@ def cmd_diff(ctx, argv: List[str]) -> int:
     extra = ["-x", "-U%s" % context] if context else []
 
     if revisions:
-        spec = revisions[0] if len(revisions) == 1 else "%s..%s" % (revisions[0], revisions[1])
+        spec = (
+            revisions[0]
+            if len(revisions) == 1
+            else "%s..%s" % (revisions[0], revisions[1])
+        )
         if spec.upper() in ("HEAD", "@") and not rev_mod.is_range(spec):
             diff_text = ctx.svn.run("diff", *extra, *targets, check=False).stdout
         else:
@@ -227,12 +290,18 @@ def _staged_diff(ctx, wc_paths: Optional[List[str]]) -> str:
             continue
         target = ctx.svn_target(path)
         if entry.action == DELETE:
-            old = ctx.svn.run("cat", "-r", "BASE", target, check=False).stdout.encode("utf-8")
-            chunks.extend(formatting.unified_diff(old, b"", path, new_label="/dev/null"))
+            old = ctx.svn.run("cat", "-r", "BASE", target, check=False).stdout.encode(
+                "utf-8"
+            )
+            chunks.extend(
+                formatting.unified_diff(old, b"", path, new_label="/dev/null")
+            )
             continue
         new = ctx.state.objects.read(entry.blob) if entry.blob else b""
         if entry.action == ADD:
-            chunks.extend(formatting.unified_diff(b"", new, path, old_label="/dev/null"))
+            chunks.extend(
+                formatting.unified_diff(b"", new, path, old_label="/dev/null")
+            )
             continue
         result = ctx.svn.run("cat", "-r", "BASE", target, check=False)
         old = result.stdout.encode("utf-8") if result.ok else b""
@@ -259,7 +328,9 @@ def _worktree_diff(ctx, wc_paths: Optional[List[str]]) -> str:
             absolute = ctx.abs_path(entry.path)
             current = absolute.read_bytes() if absolute.is_file() else b""
             chunks.extend(
-                formatting.unified_diff(ctx.state.objects.read(staged.blob), current, entry.path)
+                formatting.unified_diff(
+                    ctx.state.objects.read(staged.blob), current, entry.path
+                )
             )
         elif entry.unstaged:
             if entry.path in queued:
@@ -283,7 +354,13 @@ def _emit_diff(ctx, diff_text: str, opts) -> int:
     if not diff_text.strip():
         return 0
 
-    if opts.has("name-only") or opts.has("name-status") or opts.has("stat") or opts.has("numstat") or opts.has("shortstat"):
+    if (
+        opts.has("name-only")
+        or opts.has("name-status")
+        or opts.has("stat")
+        or opts.has("numstat")
+        or opts.has("shortstat")
+    ):
         per_file = _split_by_file(diff_text)
         if opts.has("name-only"):
             for path, _ in per_file:
@@ -359,18 +436,28 @@ def _line_range(spec) -> Tuple[int, Optional[int]]:
         first = int(start) if start.strip() else 1
         last = int(end) if end.strip() else None
     except ValueError:
-        raise UsageError("git blame -L takes <start>[,<end>] line numbers, got %r" % text)
+        raise UsageError(
+            "git blame -L takes <start>[,<end>] line numbers, got %r" % text
+        )
     return max(first, 1), last
 
 
 def cmd_blame(ctx, argv: List[str]) -> int:
-    opts = parse(argv, flags=["line-porcelain", "porcelain", "s", "w"], values=["L", "revision", "r"])
-    refuse("blame", opts, {
-        "porcelain": "svngit has no git object ids to emit; use `svn blame --xml` "
-                     "for a machine-readable form.",
-        "line-porcelain": "svngit has no git object ids to emit; use "
-                          "`svn blame --xml` for a machine-readable form.",
-    })
+    opts = parse(
+        argv,
+        flags=["line-porcelain", "porcelain", "s", "w"],
+        values=["L", "revision", "r"],
+    )
+    refuse(
+        "blame",
+        opts,
+        {
+            "porcelain": "svngit has no git object ids to emit; use `svn blame --xml` "
+            "for a machine-readable form.",
+            "line-porcelain": "svngit has no git object ids to emit; use "
+            "`svn blame --xml` for a machine-readable form.",
+        },
+    )
     if not opts.paths:
         raise UsageError("git blame <file>")
 
@@ -402,15 +489,24 @@ def cmd_blame(ctx, argv: List[str]) -> int:
         else:
             revision_id = formatting.revision_id(int(commit.get("revision") or 0))
             author_node = commit.find("author")
-            author = author_node.text if author_node is not None and author_node.text else "(unknown)"
+            author = (
+                author_node.text
+                if author_node is not None and author_node.text
+                else "(unknown)"
+            )
             date_node = commit.find("date")
-            parsed = parse_svn_date(date_node.text if date_node is not None and date_node.text else "")
+            parsed = parse_svn_date(
+                date_node.text if date_node is not None and date_node.text else ""
+            )
             date = parsed.strftime("%Y-%m-%d %H:%M:%S %z") if parsed else ""
         line = text[number - 1] if 0 < number <= len(text) else ""
         if opts.has("s"):
             ctx.echo("%s %*d) %s" % (revision_id, width, number, line))
         else:
-            ctx.echo("%s (%-16s %s %*d) %s" % (revision_id, author, date, width, number, line))
+            ctx.echo(
+                "%s (%-16s %s %*d) %s"
+                % (revision_id, author, date, width, number, line)
+            )
     return 0
 
 
@@ -425,12 +521,17 @@ def cmd_shortlog(ctx, argv: List[str]) -> int:
         values=["max-count", "author"],
         allow_numeric=True,
     )
-    no_effect(ctx, "shortlog", opts, {
-        "committer": "Subversion records one author per revision; there is no "
-                     "separate committer to group by.",
-        "c": "Subversion records one author per revision; there is no "
-             "separate committer to group by.",
-    })
+    no_effect(
+        ctx,
+        "shortlog",
+        opts,
+        {
+            "committer": "Subversion records one author per revision; there is no "
+            "separate committer to group by.",
+            "c": "Subversion records one author per revision; there is no "
+            "separate committer to group by.",
+        },
+    )
     revisions, paths = split_revisions_and_paths(ctx, opts.positionals)
     target = ctx.svn_target(ctx.to_wc_path(paths[0])) if paths else str(ctx.wc_root)
 
@@ -446,18 +547,27 @@ def cmd_shortlog(ctx, argv: List[str]) -> int:
 
     grouped: Dict[str, List[str]] = {}
     for entry in entries:
-        subject = entry.message.strip().splitlines()[0] if entry.message.strip() else "(no message)"
+        subject = (
+            entry.message.strip().splitlines()[0]
+            if entry.message.strip()
+            else "(no message)"
+        )
         grouped.setdefault(entry.author, []).append(subject)
 
     uuid = ctx.info.repos_uuid
     order = sorted(
         grouped,
-        key=(lambda a: (-len(grouped[a]), a.lower())) if opts.has("numbered", "n")
-        else (lambda a: a.lower()),
+        key=(
+            (lambda a: (-len(grouped[a]), a.lower()))
+            if opts.has("numbered", "n")
+            else (lambda a: a.lower())
+        ),
     )
     for author in order:
         subjects = grouped[author]
-        name = formatting.author_line(author, uuid) if opts.has("email", "e") else author
+        name = (
+            formatting.author_line(author, uuid) if opts.has("email", "e") else author
+        )
         if opts.has("summary", "s"):
             ctx.echo("%6d\t%s" % (len(subjects), name))
             continue
@@ -485,15 +595,24 @@ def cmd_describe(ctx, argv: List[str]) -> int:
         flags=["tags", "all", "always", "dirty", "long", "contains"],
         values=["match", "abbrev", "candidates"],
     )
-    refuse("describe", opts, {
-        "contains": "that asks which later tag contains a revision; use "
-                    "`git tag --contains <rev>` instead.",
-    })
-    no_effect(ctx, "describe", opts, {
-        "abbrev": "a revision number is already its shortest form.",
-        "candidates": "tags are compared by the revision they were copied from, "
-                      "so the best match is found without a search limit.",
-    })
+    refuse(
+        "describe",
+        opts,
+        {
+            "contains": "that asks which later tag contains a revision; use "
+            "`git tag --contains <rev>` instead.",
+        },
+    )
+    no_effect(
+        ctx,
+        "describe",
+        opts,
+        {
+            "abbrev": "a revision number is already its shortest form.",
+            "candidates": "tags are compared by the revision they were copied from, "
+            "so the best match is found without a search limit.",
+        },
+    )
 
     spec = opts.positionals[0] if opts.positionals else "HEAD"
     target_rev = rev_mod.resolve(ctx, spec, str(ctx.wc_root))
@@ -523,7 +642,10 @@ def cmd_describe(ctx, argv: List[str]) -> int:
     if distance == 0 and not opts.has("long"):
         ctx.echo(best_name + suffix)
     else:
-        ctx.echo("%s-%d-%s%s" % (best_name, distance, formatting.revision_id(target_rev), suffix))
+        ctx.echo(
+            "%s-%d-%s%s"
+            % (best_name, distance, formatting.revision_id(target_rev), suffix)
+        )
     return 0
 
 
@@ -550,7 +672,11 @@ def _revisions_between(ctx, start: int, end: int) -> int:
 
 def _dirty_suffix(ctx) -> str:
     report = status_mod.compute(ctx)
-    return "-dirty" if any(not e.untracked and not e.ignored for e in report.entries) else ""
+    return (
+        "-dirty"
+        if any(not e.untracked and not e.ignored for e in report.entries)
+        else ""
+    )
 
 
 # ----------------------------------------------------------------------

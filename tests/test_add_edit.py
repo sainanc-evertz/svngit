@@ -184,7 +184,9 @@ def test_empty_patch_parses_to_nothing():
 # through the CLI
 # ----------------------------------------------------------------------
 def setup(harness, work=None):
-    work = work if work is not None else BASE.replace("two", "TWO").replace("ten", "TEN")
+    work = (
+        work if work is not None else BASE.replace("two", "TWO").replace("ten", "TEN")
+    )
     harness.write("a.txt", work)
     harness.set_status([("a.txt", "modified")])
     harness.svn.respond("cat", BASE, first=True)
@@ -222,7 +224,9 @@ def test_quitting_with_an_empty_patch_stages_nothing(harness):
 def test_deleting_every_change_stages_nothing(harness):
     setup(harness)
     harness.ctx.edit_hook = lambda text: "\n".join(
-        line for line in text.splitlines() if not line.startswith(("+", "-")) or line.startswith(("+++", "---"))
+        line
+        for line in text.splitlines()
+        if not line.startswith(("+", "-")) or line.startswith(("+++", "---"))
     )
     harness.run("add", "-e")
     assert not harness.ctx.state.index
@@ -263,7 +267,9 @@ def test_p_and_e_together_are_refused(harness):
 # three-way merge (used when restoring a partial stash)
 # ----------------------------------------------------------------------
 def test_merge3_with_no_local_edits_returns_theirs_exactly():
-    assert patch_mod.merge3(BASE, BASE, BASE.replace("two", "TWO")) == BASE.replace("two", "TWO")
+    assert patch_mod.merge3(BASE, BASE, BASE.replace("two", "TWO")) == BASE.replace(
+        "two", "TWO"
+    )
 
 
 def test_merge3_combines_edits_in_different_places():
@@ -307,7 +313,7 @@ def test_mbox_signature_ends_the_patch():
 
 
 def test_a_deleted_line_of_one_dash_is_not_a_signature():
-    """"--" without the trailing space is a real deletion, not the end."""
+    """ "--" without the trailing space is a real deletion, not the end."""
     base = "keep\n-\nkeep too\n"
     work = "keep\nkeep too\n"
     assert round_trip(base, work) == work
@@ -326,4 +332,7 @@ def test_svn_style_headers_are_understood():
     )
     patches = patch_mod.parse_patch(text)
     assert [p.path for p in patches] == ["a.txt"]
-    assert patch_mod.apply_file_patch("one\ntwo\nthree\n", patches[0]) == "one\nTWO\nthree\n"
+    assert (
+        patch_mod.apply_file_patch("one\ntwo\nthree\n", patches[0])
+        == "one\nTWO\nthree\n"
+    )

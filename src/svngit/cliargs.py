@@ -14,7 +14,12 @@ from .errors import Unsupported, UsageError
 
 
 class Options:
-    def __init__(self, values: Dict[str, object], positionals: List[str], after_dashdash: List[str]):
+    def __init__(
+        self,
+        values: Dict[str, object],
+        positionals: List[str],
+        after_dashdash: List[str],
+    ):
         self._values = values
         self.positionals = positionals
         #: Paths given after `--`, which git treats as unambiguously pathnames.
@@ -47,7 +52,9 @@ class Options:
 
     def count(self, name: str) -> int:
         value = self._values.get(name)
-        return int(value) if isinstance(value, int) else (1 if name in self._values else 0)
+        return (
+            int(value) if isinstance(value, int) else (1 if name in self._values else 0)
+        )
 
     @property
     def paths(self) -> List[str]:

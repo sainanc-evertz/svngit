@@ -19,10 +19,14 @@ def cmd_config(ctx, argv: List[str]) -> int:
         flags=["list", "l", "global", "local", "system", "get", "bool", "int"],
         values=["unset", "add", "get-regexp"],
     )
-    refuse("config", opts, {
-        "add": "svngit config keys hold a single value, so there is nothing to "
-               "append to. Set the key instead.",
-    })
+    refuse(
+        "config",
+        opts,
+        {
+            "add": "svngit config keys hold a single value, so there is nothing to "
+            "append to. Set the key instead.",
+        },
+    )
     if opts.has("global") or opts.has("system"):
         ctx.note("svngit config is stored per working copy; --global is ignored")
     # --local is the only scope there is, so it needs no handling.
@@ -73,7 +77,11 @@ def cmd_config(ctx, argv: List[str]) -> int:
 def _typed(value: str, opts) -> str:
     """Apply git's --bool / --int canonicalisation to a config value."""
     if opts.has("bool"):
-        return "true" if value.strip().lower() in ("true", "yes", "on", "1", "") else "false"
+        return (
+            "true"
+            if value.strip().lower() in ("true", "yes", "on", "1", "")
+            else "false"
+        )
     if opts.has("int"):
         try:
             return str(int(value.strip()))
@@ -122,8 +130,16 @@ def cmd_rev_parse(ctx, argv: List[str]) -> int:
     opts = parse(
         argv,
         flags=[
-            "abbrev-ref", "show-toplevel", "git-dir", "svngit-dir", "is-inside-work-tree",
-            "short", "verify", "quiet", "q", "symbolic-full-name",
+            "abbrev-ref",
+            "show-toplevel",
+            "git-dir",
+            "svngit-dir",
+            "is-inside-work-tree",
+            "short",
+            "verify",
+            "quiet",
+            "q",
+            "symbolic-full-name",
         ],
     )
     handled = False
@@ -160,7 +176,9 @@ def cmd_rev_parse(ctx, argv: List[str]) -> int:
         handled = True
 
     if not handled:
-        raise UsageError("git rev-parse <revision> | --show-toplevel | --abbrev-ref HEAD")
+        raise UsageError(
+            "git rev-parse <revision> | --show-toplevel | --abbrev-ref HEAD"
+        )
     return 0
 
 
@@ -168,16 +186,36 @@ def cmd_rev_parse(ctx, argv: List[str]) -> int:
 # ls-files
 # ----------------------------------------------------------------------
 def cmd_ls_files(ctx, argv: List[str]) -> int:
-    opts = parse(argv, flags=["cached", "c", "modified", "m", "others", "o", "deleted", "d", "stage", "s"])
-    refuse("ls-files", opts, {
-        "stage": "there are no git object ids or stage numbers to print.",
-        "s": "there are no git object ids or stage numbers to print.",
-    })
+    opts = parse(
+        argv,
+        flags=[
+            "cached",
+            "c",
+            "modified",
+            "m",
+            "others",
+            "o",
+            "deleted",
+            "d",
+            "stage",
+            "s",
+        ],
+    )
+    refuse(
+        "ls-files",
+        opts,
+        {
+            "stage": "there are no git object ids or stage numbers to print.",
+            "s": "there are no git object ids or stage numbers to print.",
+        },
+    )
     # -c/--cached is the default listing.
     from .. import status as status_mod
 
     if opts.has("modified", "m") or opts.has("others", "o") or opts.has("deleted", "d"):
-        report = status_mod.compute(ctx, ctx.to_wc_paths(opts.paths) if opts.paths else None)
+        report = status_mod.compute(
+            ctx, ctx.to_wc_paths(opts.paths) if opts.paths else None
+        )
         for entry in report.entries:
             if opts.has("others", "o") and entry.untracked:
                 ctx.echo(entry.path)
@@ -187,7 +225,11 @@ def cmd_ls_files(ctx, argv: List[str]) -> int:
                 ctx.echo(entry.path)
         return 0
 
-    target = ctx.svn_target(ctx.to_wc_path(opts.paths[0])) if opts.paths else str(ctx.wc_root)
+    target = (
+        ctx.svn_target(ctx.to_wc_path(opts.paths[0]))
+        if opts.paths
+        else str(ctx.wc_root)
+    )
     result = ctx.svn.run("list", "-R", target, check=False)
     for line in result.stdout.splitlines():
         if line and not line.endswith("/"):

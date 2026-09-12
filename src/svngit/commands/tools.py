@@ -36,15 +36,30 @@ def _pick(configured: Optional[str], candidates) -> Optional[str]:
 def cmd_difftool(ctx, argv: List[str]) -> int:
     opts = parse(
         argv,
-        flags=["no-prompt", "y", "prompt", "dir-diff", "d", "cached", "staged", "gui", "g"],
+        flags=[
+            "no-prompt",
+            "y",
+            "prompt",
+            "dir-diff",
+            "d",
+            "cached",
+            "staged",
+            "gui",
+            "g",
+        ],
         values=["tool", "t", "extcmd"],
     )
-    no_effect(ctx, "difftool", opts, {
-        "dir-diff": "svn diff hands the tool one file at a time.",
-        "d": "svn diff hands the tool one file at a time.",
-        "gui": "svngit does not keep a separate GUI tool setting; use --tool.",
-        "g": "svngit does not keep a separate GUI tool setting; use --tool.",
-    })
+    no_effect(
+        ctx,
+        "difftool",
+        opts,
+        {
+            "dir-diff": "svn diff hands the tool one file at a time.",
+            "d": "svn diff hands the tool one file at a time.",
+            "gui": "svngit does not keep a separate GUI tool setting; use --tool.",
+            "g": "svngit does not keep a separate GUI tool setting; use --tool.",
+        },
+    )
     # --prompt is the default; --no-prompt/-y is what changes it.
     tool = _pick(
         opts.first("tool", "t", "extcmd") or ctx.state.get_config("diff.tool"),
@@ -77,10 +92,15 @@ def cmd_mergetool(ctx, argv: List[str]) -> int:
         flags=["no-prompt", "y", "prompt", "gui", "g"],
         values=["tool", "t"],
     )
-    no_effect(ctx, "mergetool", opts, {
-        "gui": "svngit does not keep a separate GUI tool setting; use --tool.",
-        "g": "svngit does not keep a separate GUI tool setting; use --tool.",
-    })
+    no_effect(
+        ctx,
+        "mergetool",
+        opts,
+        {
+            "gui": "svngit does not keep a separate GUI tool setting; use --tool.",
+            "g": "svngit does not keep a separate GUI tool setting; use --tool.",
+        },
+    )
     # --prompt is the default; --no-prompt/-y is what changes it.
     conflicts = [e for e in status_mod.compute(ctx).entries if e.unmerged]
     if opts.paths:

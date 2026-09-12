@@ -187,7 +187,9 @@ def test_tag_creates_a_tags_directory(cli, svn_repo):
 
 def test_pull_picks_up_another_checkout(cli, svn_repo, tmp_path):
     other = tmp_path / "other"
-    subprocess.run(["svn", "checkout", "-q", svn_repo["url"] + "/trunk", str(other)], check=True)
+    subprocess.run(
+        ["svn", "checkout", "-q", svn_repo["url"] + "/trunk", str(other)], check=True
+    )
     (other / "theirs.txt").write_text("from elsewhere\n")
     svn("add", "theirs.txt", cwd=other)
     svn("commit", "-m", "their work", cwd=other)
@@ -205,7 +207,9 @@ def test_pull_picks_up_another_checkout(cli, svn_repo, tmp_path):
 def test_push_is_rejected_when_the_server_moved_ahead(cli, svn_repo, tmp_path):
     wc = svn_repo["wc"]
     other = tmp_path / "other"
-    subprocess.run(["svn", "checkout", "-q", svn_repo["url"] + "/trunk", str(other)], check=True)
+    subprocess.run(
+        ["svn", "checkout", "-q", svn_repo["url"] + "/trunk", str(other)], check=True
+    )
     (other / "theirs.txt").write_text("x\n")
     svn("add", "theirs.txt", cwd=other)
     svn("commit", "-m", "their work", cwd=other)
@@ -559,9 +563,7 @@ def test_add_patch_per_hunk_edit(cli, svn_repo):
     (wc / "a.txt").write_text(PATCH_BASE.replace("two", "TWO").replace("ten", "TEN"))
 
     stdout, stderr = io.StringIO(), io.StringIO()
-    ctx = Context(
-        cwd=wc, stdout=stdout, stderr=stderr, stdin=io.StringIO("y\ne\n")
-    )
+    ctx = Context(cwd=wc, stdout=stdout, stderr=stderr, stdin=io.StringIO("y\ne\n"))
     ctx.edit_hook = lambda text: text.replace("+TEN", "+EDITED")
     code = dispatch(ctx, "add", ["-p"])
     assert code == 0, stderr.getvalue()
@@ -599,8 +601,8 @@ def test_stash_patch_keeps_the_declined_hunk_in_the_working_copy(cli, svn_repo):
     assert code == 0, err
 
     on_disk = (wc / "a.txt").read_text()
-    assert "TWO" not in on_disk   # stashed away
-    assert "TEN" in on_disk       # declined, still here
+    assert "TWO" not in on_disk  # stashed away
+    assert "TEN" in on_disk  # declined, still here
 
     code, out, _ = cli("stash", "list")
     assert "stash@{0}" in out
@@ -745,7 +747,7 @@ def test_describe_names_a_tag(cli, svn_repo):
 
     code, out, err = cli("describe")
     assert code == 0, err
-    assert out.strip().startswith("v1.0-")   # tag, distance, revision
+    assert out.strip().startswith("v1.0-")  # tag, distance, revision
 
 
 def test_shortlog_summarises_real_history(cli, svn_repo):

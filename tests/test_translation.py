@@ -6,7 +6,10 @@ from conftest import info_xml
 
 def argv_string(harness, subcommand):
     argv = harness.svn.argv_for(subcommand)
-    assert argv is not None, "expected an `svn %s`, got %s" % (subcommand, harness.svn.subcommands)
+    assert argv is not None, "expected an `svn %s`, got %s" % (
+        subcommand,
+        harness.svn.subcommands,
+    )
     return " ".join(argv)
 
 
@@ -22,12 +25,16 @@ def test_clone_descends_into_trunk(harness):
 
 def test_clone_full_takes_the_whole_repository(harness):
     harness.run("clone", "--full", "https://svn.example.com/repo")
-    assert argv_string(harness, "checkout").endswith("https://svn.example.com/repo repo")
+    assert argv_string(harness, "checkout").endswith(
+        "https://svn.example.com/repo repo"
+    )
 
 
 def test_clone_branch_maps_to_the_branches_directory(harness):
     harness.run("clone", "-b", "feature-x", "https://svn.example.com/repo")
-    assert "https://svn.example.com/repo/branches/feature-x" in argv_string(harness, "checkout")
+    assert "https://svn.example.com/repo/branches/feature-x" in argv_string(
+        harness, "checkout"
+    )
 
 
 def test_clone_honours_an_explicit_destination(harness):
@@ -43,7 +50,11 @@ def test_add_new_file_schedules_it_with_svn(harness):
     harness.set_status([("new.txt", "unversioned")])
     harness.run("add", "new.txt")
     assert harness.svn.argv_for("add") == [
-        "svn", "add", "--non-interactive", "--parents", str(harness.wc / "new.txt"),
+        "svn",
+        "add",
+        "--non-interactive",
+        "--parents",
+        str(harness.wc / "new.txt"),
     ]
 
 
@@ -59,7 +70,9 @@ def test_add_modified_file_touches_only_the_index(harness):
 def test_add_a_deleted_file_stages_the_removal(harness):
     harness.set_status([("gone.txt", "missing")])
     harness.run("add", "gone.txt")
-    assert argv_string(harness, "delete").endswith("--force %s" % (harness.wc / "gone.txt"))
+    assert argv_string(harness, "delete").endswith(
+        "--force %s" % (harness.wc / "gone.txt")
+    )
 
 
 def test_add_dot_stages_everything(harness):
@@ -120,7 +133,9 @@ def test_checkout_branch_maps_to_svn_switch(harness):
 def test_checkout_b_copies_then_switches(harness):
     harness.svn.respond(
         lambda argv: argv[1] == "info" and "branches/new-thing" in " ".join(argv),
-        "", returncode=1, first=True,
+        "",
+        returncode=1,
+        first=True,
     )
     harness.run("checkout", "-b", "new-thing")
     copy = argv_string(harness, "copy")
@@ -132,7 +147,9 @@ def test_checkout_b_copies_then_switches(harness):
 def test_creating_a_branch_warns_that_it_is_a_server_side_commit(harness):
     harness.svn.respond(
         lambda argv: argv[1] == "info" and "branches/new-thing" in " ".join(argv),
-        "", returncode=1, first=True,
+        "",
+        returncode=1,
+        first=True,
     )
     harness.run("branch", "new-thing")
     assert "visible to everyone immediately" in harness.err
@@ -158,7 +175,9 @@ def test_branch_list_marks_the_current_branch(harness):
 def test_tag_maps_to_a_copy_into_tags(harness):
     harness.svn.respond(
         lambda argv: argv[1] == "info" and "tags/v1.0" in " ".join(argv),
-        "", returncode=1, first=True,
+        "",
+        returncode=1,
+        first=True,
     )
     harness.run("tag", "v1.0")
     assert "https://svn.example.com/repo/tags/v1.0" in argv_string(harness, "copy")
@@ -182,8 +201,13 @@ def test_git_revert_is_a_reverse_merge_not_svn_revert(harness):
 
 def test_cherry_pick_is_a_forward_merge_of_one_revision(harness):
     harness.set_log(
-        [{"revision": 30, "message": "nice change",
-          "paths": [{"action": "M", "path": "/branches/feature-x/a.txt"}]}]
+        [
+            {
+                "revision": 30,
+                "message": "nice change",
+                "paths": [{"action": "M", "path": "/branches/feature-x/a.txt"}],
+            }
+        ]
     )
     harness.run("cherry-pick", "r30")
     merge = argv_string(harness, "merge")

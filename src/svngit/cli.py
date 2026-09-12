@@ -14,12 +14,17 @@ from .context import Context
 from .errors import NotAWorkingCopy, SvnGitError, UsageError
 from .shim import shim_directory
 
+
 def _split_global_options(argv: Sequence[str]):
     """Pull out the options that appear before the subcommand."""
     options = {
-        "dry_run": False, "trace": False, "cwd": None,
-        "help": False, "version": False,
-        "shim_path": False, "completion": None,
+        "dry_run": False,
+        "trace": False,
+        "cwd": None,
+        "help": False,
+        "version": False,
+        "shim_path": False,
+        "completion": None,
     }
     rest = list(argv)
     while rest:

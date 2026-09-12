@@ -71,8 +71,18 @@ class Palette:
     @classmethod
     def on(cls) -> "Palette":
         return cls(
-            True, META, FRAG, OLD, NEW, COMMIT, RESET,
-            ADDED, CHANGED, UNTRACKED, UNMERGED, BRANCH_COLOUR,
+            True,
+            META,
+            FRAG,
+            OLD,
+            NEW,
+            COMMIT,
+            RESET,
+            ADDED,
+            CHANGED,
+            UNTRACKED,
+            UNMERGED,
+            BRANCH_COLOUR,
         )
 
     @classmethod

@@ -257,8 +257,16 @@ def svn_repo(tmp_path, monkeypatch):
     subprocess.run(["svnadmin", "create", str(repo)], check=True)
     url = repo.as_uri()
     subprocess.run(
-        ["svn", "mkdir", "-q", "-m", "layout",
-         url + "/trunk", url + "/branches", url + "/tags"],
+        [
+            "svn",
+            "mkdir",
+            "-q",
+            "-m",
+            "layout",
+            url + "/trunk",
+            url + "/branches",
+            url + "/tags",
+        ],
         check=True,
     )
     wc = tmp_path / "wc"

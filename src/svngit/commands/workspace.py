@@ -22,14 +22,18 @@ def cmd_clone(ctx, argv: List[str]) -> int:
         flags=["bare", "quiet", "q", "no-checkout", "n", "full"],
         values=["branch", "b", "depth", "revision", "r"],
     )
-    refuse("clone", opts, {
-        "bare": "a Subversion checkout is always a working copy. To inspect a "
-                "repository without one, use the URL directly: `svn log <url>`.",
-        "no-checkout": "a Subversion checkout is the only thing `clone` produces; "
-                       "there is no separate history to fetch first.",
-        "n": "a Subversion checkout is the only thing `clone` produces; "
-             "there is no separate history to fetch first.",
-    })
+    refuse(
+        "clone",
+        opts,
+        {
+            "bare": "a Subversion checkout is always a working copy. To inspect a "
+            "repository without one, use the URL directly: `svn log <url>`.",
+            "no-checkout": "a Subversion checkout is the only thing `clone` produces; "
+            "there is no separate history to fetch first.",
+            "n": "a Subversion checkout is the only thing `clone` produces; "
+            "there is no separate history to fetch first.",
+        },
+    )
     if not opts.positionals:
         raise UsageError("git clone <repository-url> [<directory>]")
 
@@ -94,15 +98,26 @@ def _clone_destination(url: str, checkout_url: str) -> str:
 # init
 # ----------------------------------------------------------------------
 def cmd_init(ctx, argv: List[str]) -> int:
-    opts = parse(argv, flags=["standalone", "bare", "quiet", "q"], values=["initial-branch", "b"])
-    refuse("init", opts, {
-        "bare": "`svnadmin create` already makes a server-side repository with "
-                "no working copy; --standalone then checks one out for you.",
-    })
-    no_effect(ctx, "init", opts, {
-        "initial-branch": "the standard Subversion layout names it trunk.",
-        "b": "the standard Subversion layout names it trunk.",
-    })
+    opts = parse(
+        argv, flags=["standalone", "bare", "quiet", "q"], values=["initial-branch", "b"]
+    )
+    refuse(
+        "init",
+        opts,
+        {
+            "bare": "`svnadmin create` already makes a server-side repository with "
+            "no working copy; --standalone then checks one out for you.",
+        },
+    )
+    no_effect(
+        ctx,
+        "init",
+        opts,
+        {
+            "initial-branch": "the standard Subversion layout names it trunk.",
+            "b": "the standard Subversion layout names it trunk.",
+        },
+    )
     directory = Path(opts.positionals[0]).expanduser() if opts.positionals else ctx.cwd
 
     if not opts.has("standalone"):
@@ -125,15 +140,21 @@ def cmd_init(ctx, argv: List[str]) -> int:
 
     svnadmin = os.environ.get("SVNGIT_SVNADMIN", "svnadmin")
     if shutil.which(svnadmin) is None:
-        raise SvnGitError("could not find '%s' on PATH; it is required by --standalone" % svnadmin)
+        raise SvnGitError(
+            "could not find '%s' on PATH; it is required by --standalone" % svnadmin
+        )
 
     import subprocess
 
     subprocess.run([svnadmin, "create", str(repo_path)], check=True)
     repo_url = repo_path.as_uri()
     ctx.svn.run(
-        "mkdir", "-m", "Create standard layout",
-        "%s/trunk" % repo_url, "%s/branches" % repo_url, "%s/tags" % repo_url,
+        "mkdir",
+        "-m",
+        "Create standard layout",
+        "%s/trunk" % repo_url,
+        "%s/branches" % repo_url,
+        "%s/tags" % repo_url,
         mutating=True,
     )
     ctx.svn.run("checkout", "%s/trunk" % repo_url, str(directory), mutating=True)
@@ -148,7 +169,18 @@ def cmd_init(ctx, argv: List[str]) -> int:
 def cmd_status(ctx, argv: List[str]) -> int:
     opts = parse(
         argv,
-        flags=["short", "s", "porcelain", "branch", "b", "long", "ignored", "verbose", "v", "no-color"],
+        flags=[
+            "short",
+            "s",
+            "porcelain",
+            "branch",
+            "b",
+            "long",
+            "ignored",
+            "verbose",
+            "v",
+            "no-color",
+        ],
         values=["untracked-files", "u"],
         optional_values=["color"],
     )
@@ -214,7 +246,24 @@ def _incoming_count(ctx) -> int:
 def cmd_add(ctx, argv: List[str]) -> int:
     opts = parse(
         argv,
-        flags=["all", "A", "update", "u", "force", "f", "verbose", "v", "dry-run", "n", "patch", "p", "edit", "e", "intent-to-add", "N"],
+        flags=[
+            "all",
+            "A",
+            "update",
+            "u",
+            "force",
+            "f",
+            "verbose",
+            "v",
+            "dry-run",
+            "n",
+            "patch",
+            "p",
+            "edit",
+            "e",
+            "intent-to-add",
+            "N",
+        ],
     )
     intent_only = opts.has("intent-to-add", "N")
     stage_all = opts.has("all", "A")
@@ -222,10 +271,16 @@ def cmd_add(ctx, argv: List[str]) -> int:
     targets = opts.paths
 
     if opts.has("patch", "p") and opts.has("edit", "e"):
-        raise UsageError("-p and -e cannot be combined; -p picks hunks, -e edits the whole patch")
+        raise UsageError(
+            "-p and -e cannot be combined; -p picks hunks, -e edits the whole patch"
+        )
 
-    if not targets and not (stage_all or tracked_only or opts.has("patch", "p") or opts.has("edit", "e")):
-        raise UsageError("nothing specified, nothing added.\nhint: maybe you wanted 'git add .'?")
+    if not targets and not (
+        stage_all or tracked_only or opts.has("patch", "p") or opts.has("edit", "e")
+    ):
+        raise UsageError(
+            "nothing specified, nothing added.\nhint: maybe you wanted 'git add .'?"
+        )
 
     if targets == ["."] or targets == [":/"]:
         stage_all = True
@@ -239,7 +294,11 @@ def cmd_add(ctx, argv: List[str]) -> int:
 
         # Untracked files have no diff to pick from, so only mention them when
         # the user named one explicitly.
-        chosen = report.entries if targets else [e for e in report.entries if not e.untracked]
+        chosen = (
+            report.entries
+            if targets
+            else [e for e in report.entries if not e.untracked]
+        )
         if opts.has("edit", "e"):
             return stage_edit(ctx, chosen)
         return stage_patch(ctx, chosen)
@@ -267,8 +326,9 @@ def cmd_add(ctx, argv: List[str]) -> int:
     return 0
 
 
-def _stage_one(ctx, entry, dry_run: bool = False, verbose: bool = False,
-               intent_only: bool = False) -> bool:
+def _stage_one(
+    ctx, entry, dry_run: bool = False, verbose: bool = False, intent_only: bool = False
+) -> bool:
     """Stage a single path, running whatever svn scheduling it needs."""
     abs_path = ctx.abs_path(entry.path)
 
@@ -282,11 +342,16 @@ def _stage_one(ctx, entry, dry_run: bool = False, verbose: bool = False,
             # git -N records the path with empty content, so the file shows as
             # AM and `git add -p` can pick hunks out of a brand new file.
             ctx.state.stage(
-                entry.path, ADD, ctx.state.objects.write(b""),
-                _is_executable(abs_path), intent=True,
+                entry.path,
+                ADD,
+                ctx.state.objects.write(b""),
+                _is_executable(abs_path),
+                intent=True,
             )
         else:
-            ctx.state.stage(entry.path, ADD, ctx.snapshot(entry.path), _is_executable(abs_path))
+            ctx.state.stage(
+                entry.path, ADD, ctx.snapshot(entry.path), _is_executable(abs_path)
+            )
         return True
 
     if entry.worktree == DELETE:
@@ -301,14 +366,20 @@ def _stage_one(ctx, entry, dry_run: bool = False, verbose: bool = False,
     if entry.unmerged:
         if dry_run:
             return True
-        ctx.svn.run("resolve", "--accept", "working", ctx.svn_target(entry.path), mutating=True)
-        ctx.state.stage(entry.path, MODIFY, ctx.snapshot(entry.path), _is_executable(abs_path))
+        ctx.svn.run(
+            "resolve", "--accept", "working", ctx.svn_target(entry.path), mutating=True
+        )
+        ctx.state.stage(
+            entry.path, MODIFY, ctx.snapshot(entry.path), _is_executable(abs_path)
+        )
         return True
 
     if entry.index == ADD or entry.index == "R":
         if dry_run:
             return True
-        ctx.state.stage(entry.path, entry.index, ctx.snapshot(entry.path), _is_executable(abs_path))
+        ctx.state.stage(
+            entry.path, entry.index, ctx.snapshot(entry.path), _is_executable(abs_path)
+        )
         return True
 
     if entry.index == DELETE:
@@ -321,7 +392,9 @@ def _stage_one(ctx, entry, dry_run: bool = False, verbose: bool = False,
         if dry_run:
             ctx.echo("add '%s'" % ctx.display_path(entry.path))
             return True
-        ctx.state.stage(entry.path, MODIFY, ctx.snapshot(entry.path), _is_executable(abs_path))
+        ctx.state.stage(
+            entry.path, MODIFY, ctx.snapshot(entry.path), _is_executable(abs_path)
+        )
         return True
 
     return False
@@ -338,7 +411,9 @@ def _is_executable(path: Path) -> bool:
 # rm / mv
 # ----------------------------------------------------------------------
 def cmd_rm(ctx, argv: List[str]) -> int:
-    opts = parse(argv, flags=["r", "cached", "force", "f", "dry-run", "n", "quiet", "q"])
+    opts = parse(
+        argv, flags=["r", "cached", "force", "f", "dry-run", "n", "quiet", "q"]
+    )
     if not opts.paths:
         raise UsageError("git rm <file>...")
 
@@ -362,9 +437,14 @@ def cmd_rm(ctx, argv: List[str]) -> int:
 
 def cmd_mv(ctx, argv: List[str]) -> int:
     opts = parse(argv, flags=["force", "f", "verbose", "v", "dry-run", "n", "k"])
-    no_effect(ctx, "mv", opts, {
-        "k": "svngit stops on the first error rather than skipping it.",
-    })
+    no_effect(
+        ctx,
+        "mv",
+        opts,
+        {
+            "k": "svngit stops on the first error rather than skipping it.",
+        },
+    )
     if len(opts.paths) < 2:
         raise UsageError("git mv <source>... <destination>")
 
@@ -380,7 +460,11 @@ def cmd_mv(ctx, argv: List[str]) -> int:
     for source in sources:
         source_wc = ctx.to_wc_path(source)
         ctx.state.stage(source_wc, DELETE)
-        moved_to = dest_wc if len(sources) == 1 else "%s/%s" % (dest_wc, os.path.basename(source_wc))
+        moved_to = (
+            dest_wc
+            if len(sources) == 1
+            else "%s/%s" % (dest_wc, os.path.basename(source_wc))
+        )
         ctx.state.stage(moved_to, ADD, ctx.snapshot(moved_to))
         if opts.has("verbose", "v"):
             ctx.echo("Renaming %s to %s" % (source, moved_to))
@@ -393,14 +477,18 @@ def cmd_mv(ctx, argv: List[str]) -> int:
 # ----------------------------------------------------------------------
 def cmd_reset(ctx, argv: List[str]) -> int:
     opts = parse(argv, flags=["soft", "mixed", "hard", "keep", "merge", "quiet", "q"])
-    refuse("reset", opts, {
-        "keep": "resetting to another revision while keeping local changes needs "
-                "history rewriting. Use `git stash`, `git reset --hard <rev>`, "
-                "then `git stash pop`.",
-        "merge": "resetting to another revision while keeping local changes needs "
-                 "history rewriting. Use `git stash`, `git reset --hard <rev>`, "
-                 "then `git stash pop`.",
-    })
+    refuse(
+        "reset",
+        opts,
+        {
+            "keep": "resetting to another revision while keeping local changes needs "
+            "history rewriting. Use `git stash`, `git reset --hard <rev>`, "
+            "then `git stash pop`.",
+            "merge": "resetting to another revision while keeping local changes needs "
+            "history rewriting. Use `git stash`, `git reset --hard <rev>`, "
+            "then `git stash pop`.",
+        },
+    )
     # --mixed is the default and needs no handling.
     from ..cliargs import split_revisions_and_paths
 
@@ -444,7 +532,9 @@ def _reset_hard(ctx, revision: Optional[str]) -> int:
     if revision:
         number = rev_mod.resolve(ctx, revision, str(ctx.wc_root))
         ctx.svn.run("revert", "-R", str(ctx.wc_root), mutating=True)
-        ctx.svn.run("update", "-r", str(number), str(ctx.wc_root), mutating=True, capture=False)
+        ctx.svn.run(
+            "update", "-r", str(number), str(ctx.wc_root), mutating=True, capture=False
+        )
         ctx.echo("HEAD is now at %s" % formatting.revision_id(number))
     else:
         ctx.svn.run("revert", "-R", str(ctx.wc_root), mutating=True)
@@ -482,7 +572,11 @@ def _unstage(ctx, paths: List[str]) -> int:
 
 
 def cmd_restore(ctx, argv: List[str]) -> int:
-    opts = parse(argv, flags=["staged", "S", "worktree", "W", "quiet", "q"], values=["source", "s"])
+    opts = parse(
+        argv,
+        flags=["staged", "S", "worktree", "W", "quiet", "q"],
+        values=["source", "s"],
+    )
     if not opts.paths:
         raise UsageError("git restore <file>...")
 
@@ -499,7 +593,9 @@ def cmd_restore(ctx, argv: List[str]) -> int:
                 from .. import revisions as rev_mod
 
                 number = rev_mod.resolve(ctx, source, ctx.svn_target(wc_path))
-                ctx.svn.run("update", "-r", str(number), ctx.svn_target(wc_path), mutating=True)
+                ctx.svn.run(
+                    "update", "-r", str(number), ctx.svn_target(wc_path), mutating=True
+                )
             else:
                 ctx.svn.run("revert", "-R", ctx.svn_target(wc_path), mutating=True)
             ctx.state.unstage(wc_path)
@@ -511,12 +607,30 @@ def cmd_restore(ctx, argv: List[str]) -> int:
 # clean
 # ----------------------------------------------------------------------
 def cmd_clean(ctx, argv: List[str]) -> int:
-    opts = parse(argv, flags=["force", "f", "d", "n", "dry-run", "x", "quiet", "q", "i", "interactive"])
+    opts = parse(
+        argv,
+        flags=[
+            "force",
+            "f",
+            "d",
+            "n",
+            "dry-run",
+            "x",
+            "quiet",
+            "q",
+            "i",
+            "interactive",
+        ],
+    )
     if opts.has("i", "interactive"):
-        raise UsageError("git clean -i is not supported; use -n to preview and -f to delete")
+        raise UsageError(
+            "git clean -i is not supported; use -n to preview and -f to delete"
+        )
     dry_run = opts.has("n", "dry-run")
     if not opts.has("force", "f") and not dry_run:
-        raise UsageError("clean requires -f to actually delete files (or -n to preview)")
+        raise UsageError(
+            "clean requires -f to actually delete files (or -n to preview)"
+        )
 
     scope = ctx.to_wc_paths(opts.paths) if opts.paths else None
     report = status_mod.compute(ctx, scope, include_ignored=opts.has("x"))
@@ -529,7 +643,13 @@ def cmd_clean(ctx, argv: List[str]) -> int:
             continue
         label = "Would remove" if dry_run else "Removing"
         if not opts.has("quiet", "q"):
-            ctx.echo("%s %s" % (label, ctx.display_path(entry.path) + ("/" if target.is_dir() else "")))
+            ctx.echo(
+                "%s %s"
+                % (
+                    label,
+                    ctx.display_path(entry.path) + ("/" if target.is_dir() else ""),
+                )
+            )
         if dry_run:
             continue
         if target.is_dir():
@@ -594,14 +714,23 @@ def _sparse_list(ctx, argv: List[str]) -> int:
 
 def _sparse_init(ctx, argv: List[str]) -> int:
     opts = parse(argv, flags=["cone", "no-cone", "sparse-index"])
-    refuse("sparse-checkout", opts, {
-        "no-cone": "Subversion excludes whole directories, never individual "
-                   "files by pattern, so only cone mode exists here.",
-    })
-    no_effect(ctx, "sparse-checkout", opts, {
-        "sparse-index": "Subversion records depth per directory; there is no "
-                        "index to shrink.",
-    })
+    refuse(
+        "sparse-checkout",
+        opts,
+        {
+            "no-cone": "Subversion excludes whole directories, never individual "
+            "files by pattern, so only cone mode exists here.",
+        },
+    )
+    no_effect(
+        ctx,
+        "sparse-checkout",
+        opts,
+        {
+            "sparse-index": "Subversion records depth per directory; there is no "
+            "index to shrink.",
+        },
+    )
     # --cone is the only mode, so it needs no handling.
     ctx.state.set_config(SPARSE_KEY, "")
     ctx.state.save()
@@ -614,13 +743,22 @@ def _sparse_init(ctx, argv: List[str]) -> int:
 
 def _sparse_apply(ctx, argv: List[str], replace: bool) -> int:
     opts = parse(argv, flags=["cone", "no-cone", "skip-checks", "stdin"])
-    refuse("sparse-checkout", opts, {
-        "no-cone": "Subversion excludes whole directories, never individual "
-                   "files by pattern, so only cone mode exists here.",
-    })
-    no_effect(ctx, "sparse-checkout", opts, {
-        "skip-checks": "the paths are handed to svn, which validates them itself.",
-    })
+    refuse(
+        "sparse-checkout",
+        opts,
+        {
+            "no-cone": "Subversion excludes whole directories, never individual "
+            "files by pattern, so only cone mode exists here.",
+        },
+    )
+    no_effect(
+        ctx,
+        "sparse-checkout",
+        opts,
+        {
+            "skip-checks": "the paths are handed to svn, which validates them itself.",
+        },
+    )
     wanted = list(opts.paths)
     if opts.has("stdin"):
         import sys
@@ -642,13 +780,21 @@ def _sparse_apply(ctx, argv: List[str], replace: bool) -> int:
         if child in top_level:
             continue
         ctx.svn.run(
-            "update", "--set-depth", "exclude", ctx.svn_target(child),
-            check=False, mutating=True,
+            "update",
+            "--set-depth",
+            "exclude",
+            ctx.svn_target(child),
+            check=False,
+            mutating=True,
         )
     for path in keep:
         ctx.svn.run(
-            "update", "--set-depth", "infinity", ctx.svn_target(path),
-            check=False, mutating=True,
+            "update",
+            "--set-depth",
+            "infinity",
+            ctx.svn_target(path),
+            check=False,
+            mutating=True,
         )
 
     ctx.state.set_config(SPARSE_KEY, "\n".join(keep))
@@ -658,8 +804,12 @@ def _sparse_apply(ctx, argv: List[str], replace: bool) -> int:
 
 def _sparse_disable(ctx, argv: List[str]) -> int:
     ctx.svn.run(
-        "update", "--set-depth", "infinity", str(ctx.wc_root),
-        mutating=True, capture=False,
+        "update",
+        "--set-depth",
+        "infinity",
+        str(ctx.wc_root),
+        mutating=True,
+        capture=False,
     )
     ctx.state.unset_config(SPARSE_KEY)
     ctx.state.save()

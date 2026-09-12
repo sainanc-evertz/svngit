@@ -41,15 +41,33 @@ def commit_mode(ctx) -> str:
 def cmd_commit(ctx, argv: List[str]) -> int:
     opts = parse(
         argv,
-        flags=["all", "a", "amend", "quiet", "q", "verbose", "v", "allow-empty", "no-verify", "n", "s", "signoff"],
+        flags=[
+            "all",
+            "a",
+            "amend",
+            "quiet",
+            "q",
+            "verbose",
+            "v",
+            "allow-empty",
+            "no-verify",
+            "n",
+            "s",
+            "signoff",
+        ],
         values=["message", "m", "file", "F", "author", "reuse-message", "C"],
     )
 
-    no_effect(ctx, "commit", opts, {
-        "no-verify": "svngit runs no commit hooks, so there is nothing to skip.",
-        "verbose": "the diff is not shown in the editor; use `git diff --cached`.",
-        "v": "the diff is not shown in the editor; use `git diff --cached`.",
-    })
+    no_effect(
+        ctx,
+        "commit",
+        opts,
+        {
+            "no-verify": "svngit runs no commit hooks, so there is nothing to skip.",
+            "verbose": "the diff is not shown in the editor; use `git diff --cached`.",
+            "v": "the diff is not shown in the editor; use `git diff --cached`.",
+        },
+    )
 
     if opts.has("all", "a"):
         _stage_all_tracked(ctx)
@@ -111,8 +129,11 @@ def _add_signoff(ctx, message: str, opts) -> str:
     body = message.rstrip("\n")
     separator = "\n\n" if body and not body.endswith("\n") else "\n"
     # A message that already ends in trailers takes one more line, not a gap.
-    if body.rstrip().rsplit("\n", 1)[-1].strip().startswith(
-        ("Signed-off-by:", "Co-authored-by:", "Reviewed-by:")
+    if (
+        body.rstrip()
+        .rsplit("\n", 1)[-1]
+        .strip()
+        .startswith(("Signed-off-by:", "Co-authored-by:", "Reviewed-by:"))
     ):
         separator = "\n"
     return body + separator + trailer + "\n"
@@ -147,7 +168,7 @@ def _edit_message(ctx, index) -> str:
     if editor_mod.find_editor() is None and getattr(ctx, "edit_hook", None) is None:
         raise UsageError(
             "no commit message supplied and no editor configured.\n"
-            "Use -m \"message\", or set $EDITOR."
+            'Use -m "message", or set $EDITOR.'
         )
     template = [
         "",
@@ -158,7 +179,9 @@ def _edit_message(ctx, index) -> str:
         "# Changes to be committed:",
     ]
     for path, entry in sorted(index.items()):
-        template.append("#\t%s: %s" % (formatting.STATUS_WORDS.get(entry.action, "modified"), path))
+        template.append(
+            "#\t%s: %s" % (formatting.STATUS_WORDS.get(entry.action, "modified"), path)
+        )
     raw = editor_mod.edit_text(
         ctx, "\n".join(template) + "\n", suffix=".COMMIT_EDITMSG", what="commit message"
     )
@@ -169,7 +192,9 @@ def _commit_deferred(ctx, message: str, index, opts) -> int:
     # `git add` already copied each staged file into the object store, so the
     # commit records what was staged rather than whatever is on disk now.
     changes = [
-        Change(path=path, action=entry.action, blob=entry.blob, executable=entry.executable)
+        Change(
+            path=path, action=entry.action, blob=entry.blob, executable=entry.executable
+        )
         for path, entry in sorted(index.items())
     ]
 
@@ -213,7 +238,14 @@ def _commit_immediate(ctx, message: str, paths: Sequence[str], opts) -> int:
     _refresh_base_revision(ctx)
     if not opts.has("quiet", "q"):
         if revision:
-            ctx.echo("[%s %s] %s" % (ctx.branch, formatting.revision_id(revision), message.splitlines()[0]))
+            ctx.echo(
+                "[%s %s] %s"
+                % (
+                    ctx.branch,
+                    formatting.revision_id(revision),
+                    message.splitlines()[0],
+                )
+            )
         else:
             ctx.echo(result.stdout.strip() or "committed")
     return 0
@@ -336,7 +368,9 @@ def _amend(ctx, opts) -> int:
                 existing.action = entry.action
                 existing.blob = blob
             else:
-                commit.changes.append(Change(path, entry.action, blob, entry.executable))
+                commit.changes.append(
+                    Change(path, entry.action, blob, entry.executable)
+                )
         message = opts.first("message", "m")
         if message is not None:
             commit.message = str(message)
@@ -350,11 +384,20 @@ def _amend(ctx, opts) -> int:
     # server, which svn stores as a revision property.
     message = opts.first("message", "m")
     if message is None:
-        raise UsageError("git commit --amend needs -m when the commit is already pushed")
+        raise UsageError(
+            "git commit --amend needs -m when the commit is already pushed"
+        )
     revision = ctx.info.last_changed_rev or ctx.info.revision
     result = ctx.svn.run(
-        "propset", "--revprop", "-r", str(revision), "svn:log", str(message),
-        str(ctx.wc_root), check=False, mutating=True,
+        "propset",
+        "--revprop",
+        "-r",
+        str(revision),
+        "svn:log",
+        str(message),
+        str(ctx.wc_root),
+        check=False,
+        mutating=True,
     )
     if not result.ok:
         raise SvnGitError(
@@ -395,17 +438,37 @@ def _commit_targets(ctx, paths: Sequence[str]) -> List[str]:
 def cmd_push(ctx, argv: List[str]) -> int:
     opts = parse(
         argv,
-        flags=["force", "f", "quiet", "q", "verbose", "v", "dry-run", "n", "tags", "all", "set-upstream", "u", "delete", "d"],
+        flags=[
+            "force",
+            "f",
+            "quiet",
+            "q",
+            "verbose",
+            "v",
+            "dry-run",
+            "n",
+            "tags",
+            "all",
+            "set-upstream",
+            "u",
+            "delete",
+            "d",
+        ],
         values=["repo"],
     )
-    no_effect(ctx, "push", opts, {
-        "tags": "Subversion tags are directories and are created on the server "
-                "by `git tag`; there is nothing left to push.",
-        "set-upstream": "Subversion has a single remote, already tracked.",
-        "u": "Subversion has a single remote, already tracked.",
-        "all": "a working copy is on one branch at a time; only it can be pushed.",
-        "repo": "a working copy is bound to one repository URL.",
-    })
+    no_effect(
+        ctx,
+        "push",
+        opts,
+        {
+            "tags": "Subversion tags are directories and are created on the server "
+            "by `git tag`; there is nothing left to push.",
+            "set-upstream": "Subversion has a single remote, already tracked.",
+            "u": "Subversion has a single remote, already tracked.",
+            "all": "a working copy is on one branch at a time; only it can be pushed.",
+            "repo": "a working copy is bound to one repository URL.",
+        },
+    )
     if opts.has("delete", "d"):
         from .branching import delete_remote_ref
 
@@ -414,13 +477,18 @@ def cmd_push(ctx, argv: List[str]) -> int:
     commits = ctx.state.commits
     if not commits:
         if commit_mode(ctx) == IMMEDIATE:
-            ctx.echo("Everything up-to-date (svngit.commitmode=immediate commits directly to Subversion)")
+            ctx.echo(
+                "Everything up-to-date (svngit.commitmode=immediate commits directly to Subversion)"
+            )
         else:
             ctx.echo("Everything up-to-date")
         return 0
 
     if opts.has("dry-run", "n"):
-        ctx.echo("Would push %d commit%s to %s:" % (len(commits), "" if len(commits) == 1 else "s", ctx.info.url))
+        ctx.echo(
+            "Would push %d commit%s to %s:"
+            % (len(commits), "" if len(commits) == 1 else "s", ctx.info.url)
+        )
         for commit in commits:
             ctx.echo("  %s %s" % (commit.short_id, commit.summary))
         return 0
@@ -438,7 +506,7 @@ def _check_up_to_date(ctx, force: bool) -> None:
         raise SvnGitError(
             "Updates were rejected because the remote contains work you do not\n"
             "have locally (server is at r%d, you are at r%d).\n"
-            "Run \"git pull\" to integrate the remote changes, then push again."
+            'Run "git pull" to integrate the remote changes, then push again.'
             % (head, ctx.info.revision)
         )
 
@@ -470,7 +538,9 @@ def _replay(ctx, commits: List[LocalCommit], quiet: bool = False) -> int:
             if not targets:
                 remaining.pop(0)
                 continue
-            result = ctx.svn.run("commit", "-m", commit.message, *targets, mutating=True)
+            result = ctx.svn.run(
+                "commit", "-m", commit.message, *targets, mutating=True
+            )
             revision = _parse_committed_revision(result.stdout)
             if revision:
                 last_revision = revision
@@ -483,7 +553,11 @@ def _replay(ctx, commits: List[LocalCommit], quiet: bool = False) -> int:
             if not quiet:
                 ctx.echo(
                     "  %s -> %s  %s"
-                    % (commit.short_id, formatting.revision_id(revision) if revision else "(committed)", commit.summary)
+                    % (
+                        commit.short_id,
+                        formatting.revision_id(revision) if revision else "(committed)",
+                        commit.summary,
+                    )
                 )
     finally:
         _restore(ctx, snapshot)
@@ -516,8 +590,9 @@ def _refresh_base_revision(ctx) -> None:
     server has moved ahead. `svn update` is the standard remedy and is
     content-neutral here, since a push only runs when we are already current.
     """
-    result = ctx.svn.run("update", str(ctx.wc_root), "--accept", "postpone",
-                         check=False, mutating=True)
+    result = ctx.svn.run(
+        "update", str(ctx.wc_root), "--accept", "postpone", check=False, mutating=True
+    )
     if result.ok:
         ctx._info = None  # force the next read to see the new revision
 
@@ -533,7 +608,13 @@ def _materialise(ctx, commit: LocalCommit) -> None:
             if entry is not None and entry.index == DELETE:
                 continue  # already scheduled by `git rm`
             if absolute.exists() or entry is not None:
-                ctx.svn.run("delete", "--force", ctx.svn_target(change.path), mutating=True, check=False)
+                ctx.svn.run(
+                    "delete",
+                    "--force",
+                    ctx.svn_target(change.path),
+                    mutating=True,
+                    check=False,
+                )
             continue
 
         if change.blob is not None:
@@ -545,7 +626,14 @@ def _materialise(ctx, commit: LocalCommit) -> None:
         entry = known.get(change.path)
         needs_add = entry is None or entry.untracked
         if change.action == ADD and needs_add:
-            ctx.svn.run("add", "--parents", "--force", ctx.svn_target(change.path), mutating=True, check=False)
+            ctx.svn.run(
+                "add",
+                "--parents",
+                "--force",
+                ctx.svn_target(change.path),
+                mutating=True,
+                check=False,
+            )
 
 
 def _restore(ctx, snapshot: Dict[str, Optional[str]]) -> None:
@@ -571,45 +659,75 @@ def _restore(ctx, snapshot: Dict[str, Optional[str]]) -> None:
 def cmd_pull(ctx, argv: List[str]) -> int:
     opts = parse(
         argv,
-        flags=["rebase", "r", "no-rebase", "ff-only", "quiet", "q", "verbose", "v", "all", "prune", "p"],
+        flags=[
+            "rebase",
+            "r",
+            "no-rebase",
+            "ff-only",
+            "quiet",
+            "q",
+            "verbose",
+            "v",
+            "all",
+            "prune",
+            "p",
+        ],
         values=["strategy", "s", "depth"],
     )
-    refuse("pull", opts, {
-        "strategy": "Subversion has one merge algorithm; there is no strategy to pick.",
-        "s": "Subversion has one merge algorithm; there is no strategy to pick.",
-    })
-    no_effect(ctx, "pull", opts, {
-        "no-rebase": "Subversion updates always replay your local changes on top "
-                     "of the server's.",
-        "rebase": "Subversion updates always replay your local changes on top "
-                  "of the server's; this is the only behaviour.",
-        "r": "Subversion updates always replay your local changes on top "
-             "of the server's; this is the only behaviour.",
-        "ff-only": "an update cannot be refused for being a real merge; there "
-                   "are no fast-forwards to insist on.",
-        "prune": "branches are directories, so nothing is cached locally to prune.",
-        "p": "branches are directories, so nothing is cached locally to prune.",
-        "depth": "a working copy holds no history to limit.",
-        "all": "a working copy is on one branch at a time.",
-    })
+    refuse(
+        "pull",
+        opts,
+        {
+            "strategy": "Subversion has one merge algorithm; there is no strategy to pick.",
+            "s": "Subversion has one merge algorithm; there is no strategy to pick.",
+        },
+    )
+    no_effect(
+        ctx,
+        "pull",
+        opts,
+        {
+            "no-rebase": "Subversion updates always replay your local changes on top "
+            "of the server's.",
+            "rebase": "Subversion updates always replay your local changes on top "
+            "of the server's; this is the only behaviour.",
+            "r": "Subversion updates always replay your local changes on top "
+            "of the server's; this is the only behaviour.",
+            "ff-only": "an update cannot be refused for being a real merge; there "
+            "are no fast-forwards to insist on.",
+            "prune": "branches are directories, so nothing is cached locally to prune.",
+            "p": "branches are directories, so nothing is cached locally to prune.",
+            "depth": "a working copy holds no history to limit.",
+            "all": "a working copy is on one branch at a time.",
+        },
+    )
 
     before = ctx.info.revision
     args = ["update", str(ctx.wc_root), "--accept", "postpone"]
     if opts.positionals:
-        ctx.note("Subversion has a single remote; ignoring '%s'" % " ".join(opts.positionals))
+        ctx.note(
+            "Subversion has a single remote; ignoring '%s'" % " ".join(opts.positionals)
+        )
 
     result = ctx.svn.run(*args, mutating=True)
     if not opts.has("quiet", "q"):
-        ctx.echo(result.stdout.rstrip() if result.stdout.strip() else "Already up to date.")
+        ctx.echo(
+            result.stdout.rstrip() if result.stdout.strip() else "Already up to date."
+        )
 
     after = ctx.svn.info(str(ctx.wc_root)).revision
     ctx._info = None
     if after > before:
-        ctx.echo("Updating %s..%s" % (formatting.revision_id(before), formatting.revision_id(after)))
+        ctx.echo(
+            "Updating %s..%s"
+            % (formatting.revision_id(before), formatting.revision_id(after))
+        )
         conflicts = [e for e in status_mod.compute(ctx).entries if e.unmerged]
         if conflicts:
             ctx.echo("")
-            ctx.echo("Automatic merge failed; fix conflicts and then commit the result.")
+            ctx.echo(
+                "Automatic merge failed; fix conflicts and then commit the result."
+            )
             for entry in conflicts:
                 ctx.echo("\tboth modified: %s" % ctx.display_path(entry.path))
             return 1
@@ -619,15 +737,34 @@ def cmd_pull(ctx, argv: List[str]) -> int:
 
 
 def cmd_fetch(ctx, argv: List[str]) -> int:
-    opts = parse(argv, flags=["all", "prune", "p", "quiet", "q", "verbose", "v", "tags", "dry-run", "n"])
-    no_effect(ctx, "fetch", opts, {
-        "tags": "tags are directories on the server and are always current.",
-        "prune": "nothing is cached locally to prune.",
-        "p": "nothing is cached locally to prune.",
-        "all": "a working copy is on one branch at a time.",
-        "dry-run": "fetch only reports; it never changes the working copy.",
-        "n": "fetch only reports; it never changes the working copy.",
-    })
+    opts = parse(
+        argv,
+        flags=[
+            "all",
+            "prune",
+            "p",
+            "quiet",
+            "q",
+            "verbose",
+            "v",
+            "tags",
+            "dry-run",
+            "n",
+        ],
+    )
+    no_effect(
+        ctx,
+        "fetch",
+        opts,
+        {
+            "tags": "tags are directories on the server and are always current.",
+            "prune": "nothing is cached locally to prune.",
+            "p": "nothing is cached locally to prune.",
+            "all": "a working copy is on one branch at a time.",
+            "dry-run": "fetch only reports; it never changes the working copy.",
+            "n": "fetch only reports; it never changes the working copy.",
+        },
+    )
     root = str(ctx.wc_root)
     head = ctx.svn.info(root, revision="HEAD").revision
     base = ctx.info.revision
@@ -640,14 +777,29 @@ def cmd_fetch(ctx, argv: List[str]) -> int:
     ctx.echo("From %s" % ctx.info.url)
     ctx.echo(
         "   %s..%s  %s -> origin/%s"
-        % (formatting.revision_id(base), formatting.revision_id(head), ctx.branch, ctx.branch)
+        % (
+            formatting.revision_id(base),
+            formatting.revision_id(head),
+            ctx.branch,
+            ctx.branch,
+        )
     )
     if not opts.has("quiet", "q"):
         for entry in entries:
-            ctx.echo("     %s %s" % (formatting.revision_id(entry.revision), entry.message.strip().splitlines()[0] if entry.message.strip() else ""))
+            ctx.echo(
+                "     %s %s"
+                % (
+                    formatting.revision_id(entry.revision),
+                    (
+                        entry.message.strip().splitlines()[0]
+                        if entry.message.strip()
+                        else ""
+                    ),
+                )
+            )
         ctx.echo("")
         ctx.echo(
-            'Subversion has no local mirror of unfetched revisions, so these are listed '
+            "Subversion has no local mirror of unfetched revisions, so these are listed "
             'rather than downloaded. Run "git pull" to apply them.'
         )
     return 0

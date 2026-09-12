@@ -176,7 +176,9 @@ class SvnClient:
             raise SvnCommandError(argv, result.returncode, result.stderr)
         return result
 
-    def _execute(self, argv: List[str], stdin: Optional[str], capture: bool) -> SvnResult:
+    def _execute(
+        self, argv: List[str], stdin: Optional[str], capture: bool
+    ) -> SvnResult:
         """Actually spawn svn. Overridden wholesale by the test double."""
         try:
             proc = subprocess.run(
@@ -326,9 +328,7 @@ class SvnClient:
                             path=(p.text or "").strip(),
                             kind=p.get("kind", ""),
                             copyfrom_path=p.get("copyfrom-path"),
-                            copyfrom_rev=(
-                                int(copyfrom_rev) if copyfrom_rev else None
-                            ),
+                            copyfrom_rev=(int(copyfrom_rev) if copyfrom_rev else None),
                         )
                     )
             entries.append(

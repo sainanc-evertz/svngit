@@ -83,6 +83,7 @@ def _read_line(ctx) -> Optional[str]:
         ctx.stdout.write(line if line.endswith("\n") else line + "\n")
     return line
 
+
 #: Returned by _edit_hunk when the edit did not apply and should be retried.
 _EDIT_RETRY = object()
 
@@ -140,7 +141,9 @@ def _stage_blob(ctx, entry: FileStatus, content: str) -> None:
     existing = ctx.state.index.get(entry.path)
     blob = ctx.state.objects.write(content.encode("utf-8"))
     action = entry.index if entry.index in (ADD, "R") else MODIFY
-    ctx.state.stage(entry.path, action, blob, existing.executable if existing else False)
+    ctx.state.stage(
+        entry.path, action, blob, existing.executable if existing else False
+    )
     ctx.state.save()
 
 
@@ -186,8 +189,11 @@ def _stage_one_file(ctx, entry: FileStatus) -> Optional[bool]:
         return False
 
     palette = colour_mod.palette_for(ctx)
-    ctx.echo(colour_mod.paint_diff_line(
-        "diff --git a/%s b/%s" % (entry.path, entry.path), palette))
+    ctx.echo(
+        colour_mod.paint_diff_line(
+            "diff --git a/%s b/%s" % (entry.path, entry.path), palette
+        )
+    )
     selection = select_hunks(ctx, diff, base_text, entry.path)
 
     if selection.accepted:
@@ -214,7 +220,9 @@ def _stage_one_file(ctx, entry: FileStatus) -> Optional[bool]:
     return None if selection.quit else bool(selection.accepted)
 
 
-def select_hunks(ctx, diff, base_text: str, path: str, prompt: str = "Stage this hunk") -> Selection:
+def select_hunks(
+    ctx, diff, base_text: str, path: str, prompt: str = "Stage this hunk"
+) -> Selection:
     """Walk one file's hunks, returning what the user chose.
 
     Shared by `git add -p`, which stages what is accepted, and
@@ -230,7 +238,9 @@ def select_hunks(ctx, diff, base_text: str, path: str, prompt: str = "Stage this
         for line in diff.render(item.hunk):
             ctx.echo(colour_mod.paint_diff_line(line, palette))
 
-        answer = _ask(ctx, position, queue, splittable=item.hunk.splittable, prompt=prompt)
+        answer = _ask(
+            ctx, position, queue, splittable=item.hunk.splittable, prompt=prompt
+        )
         if answer is None or answer == QUIT:
             quit_all = True
             break
@@ -342,8 +352,11 @@ def _goto(ctx, diff, queue: List[_Item], position: int) -> int:
 
     palette = colour_mod.palette_for(ctx)
     for index, item in enumerate(queue, start=1):
-        ctx.echo(colour_mod.paint_diff_line(
-            "%s%3d: %s" % (_mark(item), index, _summary(diff, item)), palette))
+        ctx.echo(
+            colour_mod.paint_diff_line(
+                "%s%3d: %s" % (_mark(item), index, _summary(diff, item)), palette
+            )
+        )
 
     ctx.stdout.write("go to which hunk? ")
     ctx.stdout.flush()
@@ -410,7 +423,9 @@ def _edit_hunk(ctx, diff, hunk, path, base_text, queue, position):
     from .. import editor as editor_mod
 
     original = "\n".join(patch_mod.render_hunk(diff, hunk)) + "\n"
-    edited = editor_mod.edit_text(ctx, original + HUNK_EDIT_NOTES, suffix=".diff", what="hunk")
+    edited = editor_mod.edit_text(
+        ctx, original + HUNK_EDIT_NOTES, suffix=".diff", what="hunk"
+    )
 
     try:
         patches = patch_mod.parse_patch(edited, default_path=path)
@@ -430,7 +445,9 @@ def _edit_hunk(ctx, diff, hunk, path, base_text, queue, position):
             trial.append(candidate)
         elif item.decision:
             trial.append(
-                item.edited if item.edited is not None else patch_mod.from_diff_hunk(diff, item.hunk)
+                item.edited
+                if item.edited is not None
+                else patch_mod.from_diff_hunk(diff, item.hunk)
             )
     try:
         patch_mod.apply_file_patch(base_text, patch_mod.FilePatch(path, trial))
@@ -443,7 +460,9 @@ def _edit_hunk(ctx, diff, hunk, path, base_text, queue, position):
 # ----------------------------------------------------------------------
 # prompting
 # ----------------------------------------------------------------------
-def _whole_file(ctx, entry: FileStatus, display: str, work_bytes: bytes) -> Optional[bool]:
+def _whole_file(
+    ctx, entry: FileStatus, display: str, work_bytes: bytes
+) -> Optional[bool]:
     """Binary files have no hunks to choose between: all or nothing."""
     ctx.echo("diff --git a/%s b/%s" % (entry.path, entry.path))
     ctx.echo("Binary file %s cannot be split into hunks." % display)
@@ -557,7 +576,10 @@ def stage_edit(ctx, entries: List[FileStatus]) -> int:
         if base_bytes == work_bytes:
             continue
         if hunks_mod.is_binary(base_bytes) or hunks_mod.is_binary(work_bytes):
-            ctx.echo("%s is binary; skipping (no patch to edit)." % ctx.display_path(entry.path))
+            ctx.echo(
+                "%s is binary; skipping (no patch to edit)."
+                % ctx.display_path(entry.path)
+            )
             continue
 
         base = base_bytes.decode("utf-8", errors="replace")
@@ -591,7 +613,10 @@ def stage_edit(ctx, entries: List[FileStatus]) -> int:
     staged = []
     for file_patch in patches:
         if file_patch.path not in sources:
-            ctx.warn("fatal: the edited patch refers to an unknown file: %s" % file_patch.path)
+            ctx.warn(
+                "fatal: the edited patch refers to an unknown file: %s"
+                % file_patch.path
+            )
             return 1
         entry, base = sources[file_patch.path]
         try:

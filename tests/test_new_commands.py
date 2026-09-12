@@ -216,11 +216,13 @@ def test_apply_strip_level(harness):
 # shortlog
 # ----------------------------------------------------------------------
 def test_shortlog_groups_by_author(harness):
-    harness.set_log([
-        {"revision": 3, "author": "alice", "message": "third"},
-        {"revision": 2, "author": "bob", "message": "second"},
-        {"revision": 1, "author": "alice", "message": "first"},
-    ])
+    harness.set_log(
+        [
+            {"revision": 3, "author": "alice", "message": "third"},
+            {"revision": 2, "author": "bob", "message": "second"},
+            {"revision": 1, "author": "alice", "message": "first"},
+        ]
+    )
     harness.run("shortlog")
     assert "alice (2):" in harness.out
     assert "      third" in harness.out
@@ -228,11 +230,13 @@ def test_shortlog_groups_by_author(harness):
 
 
 def test_shortlog_summary_and_numbered(harness):
-    harness.set_log([
-        {"revision": 3, "author": "alice", "message": "third"},
-        {"revision": 2, "author": "bob", "message": "second"},
-        {"revision": 1, "author": "alice", "message": "first"},
-    ])
+    harness.set_log(
+        [
+            {"revision": 3, "author": "alice", "message": "third"},
+            {"revision": 2, "author": "bob", "message": "second"},
+            {"revision": 1, "author": "alice", "message": "first"},
+        ]
+    )
     harness.run("shortlog", "-sn")
     lines = [l for l in harness.out.splitlines() if l.strip()]
     assert lines[0].split() == ["2", "alice"]
@@ -254,8 +258,14 @@ def tags_listing(harness, names):
 def tag_created_at(harness, copyfrom):
     harness.svn.respond(
         lambda argv: argv[1] == "log" and "tags/" in " ".join(argv),
-        log_xml([{"revision": copyfrom + 1, "paths": [{"action": "A", "path": "/tags/v1.0"}]}])
-        .replace('kind="file"', 'kind="dir" copyfrom-rev="%d"' % copyfrom),
+        log_xml(
+            [
+                {
+                    "revision": copyfrom + 1,
+                    "paths": [{"action": "A", "path": "/tags/v1.0"}],
+                }
+            ]
+        ).replace('kind="file"', 'kind="dir" copyfrom-rev="%d"' % copyfrom),
         first=True,
     )
 
@@ -366,7 +376,8 @@ def test_mergetool_resolves_after_the_tool_runs(harness, monkeypatch):
 
     calls = []
     monkeypatch.setattr(
-        "subprocess.run", lambda cmd, **kw: calls.append(cmd) or type("R", (), {"returncode": 0})()
+        "subprocess.run",
+        lambda cmd, **kw: calls.append(cmd) or type("R", (), {"returncode": 0})(),
     )
     harness.answer("y")
     harness.run("mergetool")

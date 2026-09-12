@@ -97,7 +97,9 @@ def _worktree_matches_index(abs_path: Path, staged_blob: Optional[str]) -> bool:
     return hash_file(abs_path) == staged_blob
 
 
-def compute(ctx, paths: Optional[List[str]] = None, include_ignored: bool = False) -> StatusReport:
+def compute(
+    ctx, paths: Optional[List[str]] = None, include_ignored: bool = False
+) -> StatusReport:
     """Build the two-column status for the working copy."""
     targets = [ctx.svn_target(p) for p in paths] if paths else [str(ctx.wc_root)]
     svn_entries = ctx.svn.status(targets, no_ignore=include_ignored)
@@ -166,7 +168,9 @@ def _against_local_commit(wc_path, abs_path, committed, item):
     return _NOT_LOCAL
 
 
-def _translate_entry(ctx, entry: StatusEntry, staged, wc_path: str, queued=None) -> Optional[FileStatus]:
+def _translate_entry(
+    ctx, entry: StatusEntry, staged, wc_path: str, queued=None
+) -> Optional[FileStatus]:
     item = entry.item
     props_modified = entry.props in ("modified", "conflicted")
     abs_path = ctx.abs_path(wc_path)

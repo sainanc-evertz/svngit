@@ -46,7 +46,18 @@ def cmd_stash(ctx, argv: List[str]) -> int:
 def _push(ctx, argv: List[str]) -> int:
     opts = parse(
         argv,
-        flags=["include-untracked", "u", "keep-index", "k", "all", "a", "quiet", "q", "patch", "p"],
+        flags=[
+            "include-untracked",
+            "u",
+            "keep-index",
+            "k",
+            "all",
+            "a",
+            "quiet",
+            "q",
+            "patch",
+            "p",
+        ],
         values=["message", "m"],
     )
     message = str(opts.first("message", "m", default="")) or " ".join(opts.positionals)
@@ -79,7 +90,8 @@ def _push(ctx, argv: List[str]) -> int:
     timestamp = now()
     entry = StashEntry(
         id=make_commit_id(message or "stash", [], timestamp),
-        message=message or "WIP on %s: %s" % (ctx.branch, formatting.revision_id(ctx.info.revision)),
+        message=message
+        or "WIP on %s: %s" % (ctx.branch, formatting.revision_id(ctx.info.revision)),
         timestamp=timestamp,
         base_revision=ctx.info.revision,
         patch_blob=patch_blob,
@@ -156,12 +168,16 @@ def _push_patch(ctx, opts, message: str) -> int:
             continue
 
         base_text = base_bytes.decode("utf-8", errors="replace")
-        diff = hunks_mod.diff_file(base_text, work_bytes.decode("utf-8", errors="replace"))
+        diff = hunks_mod.diff_file(
+            base_text, work_bytes.decode("utf-8", errors="replace")
+        )
         if diff.empty:
             continue
 
         ctx.echo("diff --git a/%s b/%s" % (entry.path, entry.path))
-        selection = select_hunks(ctx, diff, base_text, entry.path, prompt="Stash this hunk")
+        selection = select_hunks(
+            ctx, diff, base_text, entry.path, prompt="Stash this hunk"
+        )
         if selection.accepted:
             kept = patch_mod.apply_file_patch(
                 base_text, patch_mod.FilePatch(entry.path, selection.rejected)
@@ -279,7 +295,9 @@ def _apply(ctx, argv: List[str], drop: bool) -> int:
             handle.write(patch)
             patch_path = handle.name
         try:
-            result = ctx.svn.run("patch", patch_path, str(ctx.wc_root), check=False, mutating=True)
+            result = ctx.svn.run(
+                "patch", patch_path, str(ctx.wc_root), check=False, mutating=True
+            )
         finally:
             Path(patch_path).unlink(missing_ok=True)
         if result.stdout.strip():
@@ -295,7 +313,12 @@ def _apply(ctx, argv: List[str], drop: bool) -> int:
         absolute.write_bytes(ctx.state.objects.read(saved["blob"]))
 
     for path, values in entry.index.items():
-        ctx.state.stage(path, values.get("action", "M"), values.get("blob"), values.get("executable", False))
+        ctx.state.stage(
+            path,
+            values.get("action", "M"),
+            values.get("blob"),
+            values.get("executable", False),
+        )
 
     if drop:
         entries.pop(position)
@@ -342,8 +365,11 @@ def _show(ctx, argv: List[str]) -> int:
         ):
             ctx.echo(colour_mod.paint_diff_line(line, palette))
     if entry.patch_blob:
-        ctx.echo(colour_mod.paint_diff(
-            ctx.state.objects.read_text(entry.patch_blob).rstrip(), palette))
+        ctx.echo(
+            colour_mod.paint_diff(
+                ctx.state.objects.read_text(entry.patch_blob).rstrip(), palette
+            )
+        )
     for saved in entry.untracked:
         ctx.echo("untracked: %s" % saved["path"])
     return 0

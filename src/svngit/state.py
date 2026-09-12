@@ -34,9 +34,10 @@ def state_dir_for(wc_root: Path) -> Path:
     override = os.environ.get("SVNGIT_STATE_DIR")
     if override:
         return Path(override).expanduser()
-    base = Path(
-        os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state"
-    ) / "svngit"
+    base = (
+        Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state")
+        / "svngit"
+    )
     resolved = str(wc_root.resolve())
     digest = hashlib.sha256(resolved.encode("utf-8")).hexdigest()[:12]
     slug = re.sub(r"[^A-Za-z0-9_.-]+", "-", wc_root.name) or "wc"
@@ -191,8 +192,14 @@ class State:
             path: IndexEntry(**entry) for path, entry in self._data["index"].items()
         }
 
-    def stage(self, path: str, action: str, blob: Optional[str] = None,
-              executable: bool = False, intent: bool = False) -> None:
+    def stage(
+        self,
+        path: str,
+        action: str,
+        blob: Optional[str] = None,
+        executable: bool = False,
+        intent: bool = False,
+    ) -> None:
         self._data["index"][path] = asdict(
             IndexEntry(action=action, blob=blob, executable=executable, intent=intent)
         )
@@ -299,7 +306,9 @@ def make_commit_id(message: str, changes: List[Change], timestamp: float) -> str
     hasher.update(message.encode("utf-8"))
     hasher.update(repr(timestamp).encode("utf-8"))
     for change in sorted(changes, key=lambda c: c.path):
-        hasher.update(("%s%s%s" % (change.action, change.path, change.blob or "")).encode("utf-8"))
+        hasher.update(
+            ("%s%s%s" % (change.action, change.path, change.blob or "")).encode("utf-8")
+        )
     return hasher.hexdigest()
 
 

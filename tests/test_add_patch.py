@@ -289,7 +289,9 @@ def test_e_combines_with_a_plain_yes_on_another_hunk(harness):
     harness.ctx.edit_hook = lambda text: text.replace("+TEN", "+EDITED")
     harness.answer("y", "e")
     harness.run("add", "-p")
-    assert staged_content(harness) == BASE.replace("two", "TWO").replace("ten", "EDITED")
+    assert staged_content(harness) == BASE.replace("two", "TWO").replace(
+        "ten", "EDITED"
+    )
 
 
 def test_e_that_does_not_apply_reprompts_the_same_hunk(harness):
@@ -348,7 +350,11 @@ def test_help_mentions_e(harness):
 def setup_three_hunks(harness):
     """Three changes, each far enough apart to be its own hunk."""
     base = "".join("line%02d\n" % n for n in range(1, 31))
-    work = base.replace("line02", "TWO").replace("line15", "FIFTEEN").replace("line29", "TWENTYNINE")
+    work = (
+        base.replace("line02", "TWO")
+        .replace("line15", "FIFTEEN")
+        .replace("line29", "TWENTYNINE")
+    )
     harness.write("a.txt", work)
     harness.set_status([("a.txt", "modified")])
     harness.svn.respond("cat", base, first=True)
@@ -479,6 +485,10 @@ def test_help_lists_the_navigation_commands(harness):
     setup_two_hunks(harness)
     harness.answer("?", "n", "n")
     harness.run("add", "-p")
-    for line in ("j - leave this hunk undecided", "J - leave this hunk undecided",
-                 "g - select a hunk to go to", "/ - search for a hunk"):
+    for line in (
+        "j - leave this hunk undecided",
+        "J - leave this hunk undecided",
+        "g - select a hunk to go to",
+        "/ - search for a hunk",
+    ):
         assert line in harness.out

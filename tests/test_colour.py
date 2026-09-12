@@ -262,7 +262,9 @@ Index: /abs/wc/a.txt
 
 
 def test_svn_headers_become_git_headers(tmp_path):
-    converted = patch_mod.to_git_headers(SVN_DIFF.replace("/abs/wc", str(tmp_path)), tmp_path)
+    converted = patch_mod.to_git_headers(
+        SVN_DIFF.replace("/abs/wc", str(tmp_path)), tmp_path
+    )
     assert "diff --git a/a.txt b/a.txt" in converted
     assert "--- a/a.txt" in converted
     assert "+++ b/a.txt" in converted
@@ -288,8 +290,13 @@ def test_dev_null_is_left_alone(tmp_path):
 
 def test_converted_headers_survive_the_parser(tmp_path):
     """The point of converting: the result has to be appliable."""
-    converted = patch_mod.to_git_headers(SVN_DIFF.replace("/abs/wc", str(tmp_path)), tmp_path)
+    converted = patch_mod.to_git_headers(
+        SVN_DIFF.replace("/abs/wc", str(tmp_path)), tmp_path
+    )
     parsed = patch_mod.parse_patch(converted)
     # The parser strips the a/ prefix it was given, as git apply -p1 does.
     assert [p.path for p in parsed] == ["a.txt"]
-    assert patch_mod.apply_file_patch("one\ntwo\nthree\n", parsed[0]) == "one\nTWO\nthree\n"
+    assert (
+        patch_mod.apply_file_patch("one\ntwo\nthree\n", parsed[0])
+        == "one\nTWO\nthree\n"
+    )

@@ -8,7 +8,17 @@ from __future__ import annotations
 
 from typing import Callable, Dict, NamedTuple, Optional
 
-from . import branching, history, patches, plumbing, search, stash, sync, tools, workspace
+from . import (
+    branching,
+    history,
+    patches,
+    plumbing,
+    search,
+    stash,
+    sync,
+    tools,
+    workspace,
+)
 
 
 class Command(NamedTuple):
@@ -153,8 +163,14 @@ NO_EQUIVALENT = {
 #: option and fails on any that is neither read, refused, reported as having
 #: no effect, nor named here -- which is how a silently-ignored flag gets in.
 DEFAULT_BEHAVIOUR = {
-    ("cmd_branch", "a"): "every branch is on the server, so the default listing is already --all",
-    ("cmd_branch", "all"): "every branch is on the server, so the default listing is already --all",
+    (
+        "cmd_branch",
+        "a",
+    ): "every branch is on the server, so the default listing is already --all",
+    (
+        "cmd_branch",
+        "all",
+    ): "every branch is on the server, so the default listing is already --all",
     ("cmd_revert", "no-edit"): "svngit never opens an editor for a revert",
     ("cmd_tag", "a"): "every Subversion tag is a copy made with a log message",
     ("cmd_tag", "annotate"): "every Subversion tag is a copy made with a log message",
@@ -167,16 +183,28 @@ DEFAULT_BEHAVIOUR = {
     ("cmd_status", "long"): "the long format is the default",
     ("cmd_reset", "mixed"): "--mixed is the default reset mode",
     ("cmd_grep", "E"): "Python's regex dialect is a superset of POSIX extended",
-    ("cmd_grep", "extended-regexp"): "Python's regex dialect is a superset of POSIX extended",
+    (
+        "cmd_grep",
+        "extended-regexp",
+    ): "Python's regex dialect is a superset of POSIX extended",
     ("cmd_grep", "G"): "Python's regex dialect is a superset of POSIX basic",
     ("cmd_grep", "basic-regexp"): "Python's regex dialect is a superset of POSIX basic",
-    ("cmd_describe", "tags"): "Subversion tags are the only thing svngit can describe from",
+    (
+        "cmd_describe",
+        "tags",
+    ): "Subversion tags are the only thing svngit can describe from",
     ("cmd_format_patch", "numbered"): "output files are always numbered",
     ("cmd_format_patch", "n"): "-n is --numbered, which is already the only behaviour",
     ("cmd_difftool", "prompt"): "prompting is the default; --no-prompt turns it off",
     ("cmd_mergetool", "prompt"): "prompting is the default; --no-prompt turns it off",
-    ("_sparse_init", "cone"): "Subversion excludes directories, so cone mode is the only one",
-    ("_sparse_apply", "cone"): "Subversion excludes directories, so cone mode is the only one",
+    (
+        "_sparse_init",
+        "cone",
+    ): "Subversion excludes directories, so cone mode is the only one",
+    (
+        "_sparse_apply",
+        "cone",
+    ): "Subversion excludes directories, so cone mode is the only one",
 }
 
 

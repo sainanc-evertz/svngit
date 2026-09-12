@@ -53,7 +53,12 @@ def test_refused_commands_all_give_a_reason():
 
 
 #: The README spells the refused count as a word; keep the two in step.
-COUNT_WORDS = {23: "Twenty-three", 24: "Twenty-four", 25: "Twenty-five", 26: "Twenty-six"}
+COUNT_WORDS = {
+    23: "Twenty-three",
+    24: "Twenty-four",
+    25: "Twenty-five",
+    26: "Twenty-six",
+}
 
 
 def test_the_readme_refused_count_is_right():
@@ -71,9 +76,9 @@ def test_the_readme_refused_count_is_right():
 
 def test_the_readme_command_count_is_right():
     """The README states a number; a stale one is worse than none."""
-    assert "%d commands" % len(REGISTRY) in README, (
-        "README should say '%d commands'" % len(REGISTRY)
-    )
+    assert (
+        "%d commands" % len(REGISTRY) in README
+    ), "README should say '%d commands'" % len(REGISTRY)
 
 
 # ----------------------------------------------------------------------
@@ -103,7 +108,10 @@ def test_referenced_images_exist():
         refs = re.findall(r"!\[[^\]]*\]\(([^)]+)\)", text)
         refs += re.findall(r'<img[^>]+src="([^"]+)"', text)
         for ref in refs:
-            assert (base / ref).exists(), "%s references a missing image: %s" % (doc, ref)
+            assert (base / ref).exists(), "%s references a missing image: %s" % (
+                doc,
+                ref,
+            )
 
 
 def test_images_have_alt_text():
@@ -123,14 +131,20 @@ def test_internal_anchors_resolve():
     for doc, text in DOCS.items():
         available = _headings(text)
         for anchor in re.findall(r"\]\(#([^)]+)\)", text):
-            assert anchor in available, "%s links to a missing section: #%s" % (doc, anchor)
+            assert anchor in available, "%s links to a missing section: #%s" % (
+                doc,
+                anchor,
+            )
 
 
 def test_relative_links_resolve():
     for doc, text in DOCS.items():
         base = (ROOT / doc).parent
         for link in re.findall(r"\]\((?!#)(?!https?:)([^)]+)\)", text):
-            assert (base / link).exists(), "%s links to a missing file: %s" % (doc, link)
+            assert (base / link).exists(), "%s links to a missing file: %s" % (
+                doc,
+                link,
+            )
 
 
 def test_sample_output_is_not_hand_written():

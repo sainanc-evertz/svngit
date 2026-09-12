@@ -183,7 +183,9 @@ def test_push_stops_at_the_first_failure_and_keeps_the_rest_queued(harness):
         calls["n"] += 1
         return calls["n"] == 2
 
-    harness.svn.respond(failing_commit, "", returncode=1, stderr="server rejected", first=True)
+    harness.svn.respond(
+        failing_commit, "", returncode=1, stderr="server rejected", first=True
+    )
     harness.svn.respond("commit", "Committed revision 43.\n", first=False)
 
     code = harness.run("push")
@@ -330,7 +332,10 @@ def test_status_is_clean_after_a_deferred_commit(harness):
     harness.reset_output()
 
     harness.run("status")
-    assert "nothing to commit" in harness.out or "Changes to be committed" not in harness.out
+    assert (
+        "nothing to commit" in harness.out
+        or "Changes to be committed" not in harness.out
+    )
     assert "local work" in harness.out  # still reported as unpushed
 
 
@@ -437,9 +442,9 @@ def test_stash_p_pop_merges_with_work_done_since(harness):
     harness.run("stash", "pop")
 
     result = worktree(harness)
-    assert "TWO" in result    # the stashed hunk came back
-    assert "FIVE" in result   # the later edit survived
-    assert "TEN" in result    # the hunk that was never stashed
+    assert "TWO" in result  # the stashed hunk came back
+    assert "FIVE" in result  # the later edit survived
+    assert "TEN" in result  # the hunk that was never stashed
 
 
 def test_stash_p_operates_on_all_changes_not_just_unstaged(harness):

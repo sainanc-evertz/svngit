@@ -132,9 +132,7 @@ def diff_file(base: str, work: str, context: int = DEFAULT_CONTEXT) -> FileDiff:
     groups: List[List[int]] = [[changed[0]]]
     for index in changed[1:]:
         between = sum(
-            op[2] - op[1]
-            for op in ops[groups[-1][-1] + 1 : index]
-            if op[0] == "equal"
+            op[2] - op[1] for op in ops[groups[-1][-1] + 1 : index] if op[0] == "equal"
         )
         if between <= 2 * context:
             groups[-1].append(index)
