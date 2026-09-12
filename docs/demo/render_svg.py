@@ -6,9 +6,10 @@ at any zoom, weighs a few kilobytes, and shows up as readable text in a diff
 rather than as a binary blob.
 
 The colours match the GIF's theme (Catppuccin Mocha) so the two read as a
-set. Only the shell's own parts are coloured -- the prompt, and comments you
-typed. svngit's output is left plain, because svngit does not colourise it
-and a screenshot that suggested otherwise would be a small lie.
+set. Two things are coloured: the shell's own parts (the prompt, and comments
+you typed), and any ANSI escapes present in the captured output itself. The
+second is why captures are taken with `--color=always` -- svngit colours
+diffs on a terminal, and a still that showed them grey would understate it.
 
     python3 docs/demo/render_svg.py <capture.txt> <out.svg> [title]
 
@@ -19,6 +20,7 @@ width, so one long error message cannot stretch the image off the page.
 
 from __future__ import annotations
 
+import re
 import sys
 import textwrap
 from pathlib import Path
@@ -35,6 +37,16 @@ FONT = (
     "'SF Mono','SFMono-Regular',Menlo,Consolas,"
     "'DejaVu Sans Mono','Liberation Mono',monospace"
 )
+#: Catppuccin Mocha equivalents of the ANSI codes svngit emits, so a captured
+#: diff looks the same here as it does in a terminal with this theme.
+ANSI = {
+    "31": "#f38ba8",  # red   -- removed lines
+    "32": "#a6e3a1",  # green -- added lines
+    "33": "#f9e2af",  # yellow
+    "36": "#89dceb",  # cyan  -- hunk headers
+}
+BOLD = "#bac2de"  # meta lines: file headers
+
 FONT_SIZE = 13.5
 LINE_HEIGHT = 20.0
 CHAR_WIDTH = 8.13  # measured for this family at this size
@@ -50,9 +62,52 @@ def escape(text: str) -> str:
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
+ANSI_PATTERN = re.compile(r"\033\[([0-9;]*)m")
+
+
+def strip_ansi(text: str) -> str:
+    return ANSI_PATTERN.sub("", text)
+
+
+def ansi_spans(text: str):
+    """Split a line into (colour, text) runs, following its escape codes.
+
+    Only the handful of codes svngit emits are understood; anything else
+    resets to the default colour rather than guessing.
+    """
+    spans = []
+    current = None
+    position = 0
+    for match in ANSI_PATTERN.finditer(text):
+        chunk = text[position : match.start()]
+        if chunk:
+            spans.append((current, chunk))
+        codes = [c for c in match.group(1).split(";") if c]
+        if not codes or "0" in codes:
+            current = None
+        else:
+            for code in codes:
+                if code == "1":
+                    current = BOLD
+                elif code in ANSI:
+                    current = ANSI[code]
+        position = match.end()
+    tail = text[position:]
+    if tail:
+        spans.append((current, tail))
+    return spans
+
+
 def render_line(text: str, y: float) -> str:
-    """One terminal line, with the shell's own colouring only."""
+    """One terminal line: the shell's colouring, plus any ANSI in the output."""
     common = 'x="%.1f" y="%.1f" xml:space="preserve"' % (PAD_X, y)
+
+    if "\033[" in text:
+        spans = "".join(
+            '<tspan fill="%s">%s</tspan>' % (colour or TEXT, escape(chunk))
+            for colour, chunk in ansi_spans(text)
+        )
+        return "<text %s>%s</text>" % (common, spans)
 
     if text.startswith("$ "):
         body = text[2:]
@@ -71,6 +126,11 @@ def render_line(text: str, y: float) -> str:
     return '<text %s fill="%s">%s</text>' % (common, TEXT, escape(text))
 
 
+def visible_length(line: str) -> int:
+    """Printed width, ignoring escape codes, which take no space on screen."""
+    return len(strip_ansi(line))
+
+
 def wrap(lines, columns: int = COLUMNS):
     """Fold long lines, as a terminal of this width would.
 
@@ -80,7 +140,7 @@ def wrap(lines, columns: int = COLUMNS):
     """
     out = []
     for line in lines:
-        if len(line) <= columns:
+        if visible_length(line) <= columns:
             out.append(line)
             continue
         indent = "  " if not line.startswith("$ ") else "    "
@@ -101,7 +161,7 @@ def wrap(lines, columns: int = COLUMNS):
 
 def render(lines, title: str = "") -> str:
     lines = wrap(lines)
-    widest = max([len(line) for line in lines] + [len(title) + 8, 28])
+    widest = max([visible_length(line) for line in lines] + [len(title) + 8, 28])
     width = widest * CHAR_WIDTH + PAD_X * 2
     height = PAD_TOP + len(lines) * LINE_HEIGHT + PAD_BOTTOM
 

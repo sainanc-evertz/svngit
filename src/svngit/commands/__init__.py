@@ -160,7 +160,6 @@ DEFAULT_BEHAVIOUR = {
     ("cmd_tag", "annotate"): "every Subversion tag is a copy made with a log message",
     ("cmd_log", "abbrev-commit"): "a revision number is already its shortest form",
     ("cmd_log", "follow"): "svn log traverses copies unless --stop-on-copy is given",
-    ("cmd_diff", "no-color"): "svngit output is never colourised",
     ("cmd_config", "local"): "per-working-copy is the only scope svngit has",
     ("cmd_rev_parse", "short"): "a revision number is already its shortest form",
     ("cmd_ls_files", "c"): "listing the tracked files is the default",

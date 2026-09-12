@@ -298,6 +298,49 @@ def _locate(
 # ----------------------------------------------------------------------
 # three-way merge
 # ----------------------------------------------------------------------
+def to_git_headers(diff_text: str, wc_root) -> str:
+    """Rewrite `svn diff` headers into git's form.
+
+    svn labels files with `Index:` and annotates the ---/+++ paths with a
+    revision, using absolute paths. git uses `diff --git a/x b/x` with paths
+    relative to the tree. Normalising here means every svngit diff looks the
+    same whichever code path produced it, and -- because `git apply` strips
+    one leading component by default -- that `svngit diff | svngit apply`
+    round-trips the way it does in git.
+    """
+    from pathlib import Path
+
+    root = Path(wc_root).resolve()
+
+    def relative(raw: str) -> str:
+        candidate = Path(raw.split("\t")[0].strip())
+        try:
+            return candidate.resolve().relative_to(root).as_posix()
+        except (ValueError, OSError):
+            return candidate.as_posix()
+
+    out: List[str] = []
+    for line in diff_text.splitlines():
+        if line.startswith("Index: "):
+            path = relative(line[len("Index: ") :])
+            out.append("diff --git a/%s b/%s" % (path, path))
+            continue
+        if line.strip() and set(line.strip()) == {"="}:
+            continue  # svn's rule under the Index line
+        if line.startswith("--- ") or line.startswith("+++ "):
+            prefix = "a/" if line.startswith("---") else "b/"
+            body = line[4:]
+            # Idempotent: some diffs reach here already in git form, and
+            # prefixing twice would give `a/a/file`.
+            if body.startswith(prefix) or body.strip() == "/dev/null":
+                out.append(line)
+            else:
+                out.append("%s %s%s" % (line[:3], prefix, relative(body)))
+            continue
+        out.append(line)
+    return "\n".join(out)
+
+
 def merge3(ancestor: str, ours: str, theirs: str) -> Optional[str]:
     """Combine two independent sets of edits to `ancestor`. None on conflict.
 

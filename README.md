@@ -27,6 +27,7 @@ server stays a Subversion server, and there is no mirror or import step.
 - [How it thinks](#how-it-thinks) — four ideas that explain most behaviour
 - [commit and push](#commit-and-push) — the one real workflow difference
 - [Staging part of a file](#staging-part-of-a-file) — `add -p`, `add -e`
+- [Colour](#colour) — and when it is deliberately withheld
 - [Where git and Subversion disagree](#where-git-and-subversion-disagree)
 - [Configuration](#configuration) · [Development](#development) ·
   [Status](#status)
@@ -253,6 +254,28 @@ pick hunks out of a file git has never seen. It is not committed until you
 stage it properly, and `git commit` says so rather than committing an empty
 file.
 
+## Colour
+
+Diffs, patches, `add -p` hunks and `git status` are coloured the way git
+colours them: added lines green, removed red, hunk headers cyan, file headers
+bold, and in status a staged path green against an unstaged or untracked one
+in red.
+
+Colour appears only when the output is a terminal. That is not a cosmetic
+choice — `git diff > patch.txt` has to produce a file that `git apply` can
+read, and `git status --porcelain` has to stay machine-readable. Escape codes
+are added at the moment text is printed, so the patch handed to `$EDITOR` by
+`git add -e` and the files written by `git format-patch` never carry any.
+
+To override:
+
+```bash
+git diff --color          # force it on, even into a pipe
+git diff --no-color       # force it off
+git config color.ui never # off for good
+NO_COLOR=1 git diff       # the environment convention, also honoured
+```
+
 ## Where git and Subversion disagree
 
 ### Merges commit immediately
@@ -313,6 +336,9 @@ Settings live per working copy. Read and write them with `git config`.
 | `svngit.layout` | probed once | `standard` or `flat`, cached after the first probe |
 | `svngit.checkupstream` | unset | `true` lets `git status` ask the server how far behind you are. Costs a network round trip per status. |
 | `svngit.quiet` | unset | `true` silences the explanatory notes |
+| `color.ui` | `auto` | `always`, `never` or `auto`. `auto` colours only when output is a terminal. |
+| `color.diff` | follows `color.ui` | Colour for diffs, patches and `add -p` |
+| `color.status` | follows `color.ui` | Colour for `git status` |
 | `user.name` | your login name | Author recorded on queued commits |
 
 Environment variables:

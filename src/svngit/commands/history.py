@@ -6,7 +6,8 @@ import fnmatch
 import re
 from typing import Dict, List, Optional, Tuple
 
-from .. import formatting, revisions as rev_mod, status as status_mod
+from .. import colour as colour_mod, formatting, patch as patch_mod
+from .. import revisions as rev_mod, status as status_mod
 from ..cliargs import no_effect, parse, refuse, split_revisions_and_paths
 from ..errors import SvnGitError, UsageError
 from ..state import ADD, DELETE
@@ -19,9 +20,10 @@ from ..svnclient import parse_svn_date
 def cmd_log(ctx, argv: List[str]) -> int:
     opts = parse(
         argv,
-        flags=["oneline", "graph", "stat", "name-only", "name-status", "patch", "p", "reverse", "all", "decorate", "abbrev-commit", "no-merges", "follow"],
+        flags=["oneline", "graph", "stat", "name-only", "name-status", "patch", "p", "reverse", "all", "decorate", "abbrev-commit", "no-merges", "follow", "no-color"],
         values=["max-count", "n", "author", "grep", "since", "after", "until",
                 "before", "pretty", "format", "skip", "S", "G"],
+        optional_values=["color"],
         allow_numeric=True,
     )
     revisions, paths = split_revisions_and_paths(ctx, opts.positionals)
@@ -72,17 +74,18 @@ def cmd_log(ctx, argv: List[str]) -> int:
 
     # Unpushed local commits sit on top of server history, exactly as they do
     # in git.
+    palette = colour_mod.palette_for(ctx, opts)
     pending = ctx.state.commits
     if pending and not revisions and not opts.has("reverse"):
         for commit in reversed(pending):
             for line in formatting.format_local_commit(commit, uuid, oneline=oneline):
-                ctx.echo(line)
+                ctx.echo(colour_mod.paint_log_line(line, palette))
 
     for entry in entries:
         for line in formatting.format_log_entry(
             entry, uuid, oneline=oneline, show_paths=opts.has("name-only", "name-status", "stat")
         ):
-            ctx.echo(line)
+            ctx.echo(colour_mod.paint_log_line(line, palette))
     return 0
 
 
@@ -147,8 +150,9 @@ def _log_range(ctx, revisions: List[str], target: str, opts) -> Optional[str]:
 def cmd_show(ctx, argv: List[str]) -> int:
     opts = parse(
         argv,
-        flags=["stat", "name-only", "name-status", "oneline", "quiet", "s"],
+        flags=["stat", "name-only", "name-status", "oneline", "quiet", "s", "no-color"],
         values=["pretty", "format"],
+        optional_values=["color"],
     )
     spec = opts.positionals[0] if opts.positionals else "HEAD"
     revision = rev_mod.resolve(ctx, spec, str(ctx.wc_root))
@@ -158,17 +162,20 @@ def cmd_show(ctx, argv: List[str]) -> int:
         raise UsageError("no revision %s in this working copy's history" % spec)
     entry = entries[0]
 
+    palette = colour_mod.palette_for(ctx, opts)
     for line in formatting.format_log_entry(
         entry, ctx.info.repos_uuid, oneline=opts.has("oneline"), show_paths=opts.has("name-only", "name-status", "stat")
     ):
-        ctx.echo(line)
+        ctx.echo(colour_mod.paint_log_line(line, palette))
 
     if opts.has("quiet", "s") or opts.has("name-only", "name-status"):
         return 0
 
     diff = ctx.svn.run("diff", "-c", str(revision), str(ctx.wc_root), check=False)
     if diff.ok and diff.stdout.strip():
-        ctx.echo(diff.stdout.rstrip())
+        palette = colour_mod.palette_for(ctx, opts)
+        normalised = patch_mod.to_git_headers(diff.stdout, ctx.wc_root).rstrip()
+        ctx.echo(colour_mod.paint_diff(normalised, palette))
     return 0
 
 
@@ -178,11 +185,11 @@ def cmd_show(ctx, argv: List[str]) -> int:
 def cmd_diff(ctx, argv: List[str]) -> int:
     opts = parse(
         argv,
-        flags=["cached", "staged", "stat", "name-only", "name-status", "numstat", "shortstat", "no-color", "color", "text", "binary"],
+        flags=["cached", "staged", "stat", "name-only", "name-status", "numstat", "shortstat", "no-color", "text", "binary"],
         values=["unified", "U", "diff-filter"],
+        optional_values=["color"],
     )
     no_effect(ctx, "diff", opts, {
-        "color": "svngit does not colourise its output.",
         "binary": "Subversion diffs cannot carry binary content.",
         "text": "binary files are reported as differing, never inlined.",
         "diff-filter": "the diff is not filtered by change type.",
@@ -299,7 +306,13 @@ def _emit_diff(ctx, diff_text: str, opts) -> int:
             ctx.echo(line)
         return 0
 
-    ctx.echo(diff_text.rstrip("\n"))
+    # svn labels files with `Index:` and absolute paths; git uses
+    # `diff --git a/x b/x`. Normalising here keeps every code path in this
+    # command producing one format, and lets the output round-trip through
+    # `git apply`, which strips one leading component by default.
+    palette = colour_mod.palette_for(ctx, opts)
+    normalised = patch_mod.to_git_headers(diff_text, ctx.wc_root).rstrip("\n")
+    ctx.echo(colour_mod.paint_diff(normalised, palette))
     return 0
 
 

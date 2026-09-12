@@ -61,6 +61,7 @@ def parse(
     argv: Sequence[str],
     flags: Iterable[str] = (),
     values: Iterable[str] = (),
+    optional_values: Iterable[str] = (),
     allow_numeric: bool = False,
     numeric_key: str = "n",
 ) -> Options:
@@ -71,9 +72,15 @@ def parse(
     git's bare `-5` shorthand for "limit to 5", stored under `numeric_key` --
     which has to move where `-n` already means something else, as it does for
     `format-patch`, where `-n` is --numbered.
+
+    `optional_values` covers git's `--opt[=<when>]` shape, where the option
+    means one thing on its own and another with a value: `--color` and
+    `--color=always` are both valid, and `--color auto` is not -- the next
+    word is a path, not the option's argument.
     """
     flag_set = set(flags)
     value_set = set(values)
+    optional_set = set(optional_values)
     parsed: Dict[str, object] = {}
     positionals: List[str] = []
     after_dashdash: List[str] = []
@@ -98,7 +105,10 @@ def parse(
 
         if arg.startswith("--"):
             name, sep, inline = arg[2:].partition("=")
-            if name in value_set:
+            if name in optional_set:
+                # Only an attached value counts; a following word is a path.
+                parsed[name] = inline if sep else 1
+            elif name in value_set:
                 if sep:
                     parsed[name] = inline
                 else:

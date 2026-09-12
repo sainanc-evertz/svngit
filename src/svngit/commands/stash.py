@@ -327,10 +327,12 @@ def _clear(ctx, argv: List[str]) -> int:
 
 
 def _show(ctx, argv: List[str]) -> int:
+    from .. import colour as colour_mod
     from .. import patch as patch_mod
 
     position = _resolve_index(ctx, argv)
     entry = ctx.state.stash[position]
+    palette = colour_mod.palette_for(ctx)
     for item in entry.partial:
         objects = ctx.state.objects
         for line in patch_mod.render_file_patch(
@@ -338,9 +340,10 @@ def _show(ctx, argv: List[str]) -> int:
             objects.read(item["kept"]).decode("utf-8", errors="replace"),
             objects.read(item["full"]).decode("utf-8", errors="replace"),
         ):
-            ctx.echo(line)
+            ctx.echo(colour_mod.paint_diff_line(line, palette))
     if entry.patch_blob:
-        ctx.echo(ctx.state.objects.read_text(entry.patch_blob).rstrip())
+        ctx.echo(colour_mod.paint_diff(
+            ctx.state.objects.read_text(entry.patch_blob).rstrip(), palette))
     for saved in entry.untracked:
         ctx.echo("untracked: %s" % saved["path"])
     return 0

@@ -14,26 +14,44 @@ import pathlib
 from svngit.commands import DEFAULT_BEHAVIOUR
 
 COMMANDS_DIR = pathlib.Path(__file__).resolve().parents[1] / "src" / "svngit" / "commands"
+PACKAGE_DIR = COMMANDS_DIR.parent
 
 
-def _declared_and_handled(path: pathlib.Path):
-    tree = ast.parse(path.read_text())
-
-    handled = set()
+def _option_reads(tree) -> set:
+    """Option names a module reads, via opts.* or refuse()/no_effect()."""
+    names = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
            and node.func.attr in ("has", "get", "first", "count", "negated"):
-            handled |= {
+            names |= {
                 a.value for a in node.args
                 if isinstance(a, ast.Constant) and isinstance(a.value, str)
             }
         if isinstance(node, ast.Call) and getattr(node.func, "id", "") in ("refuse", "no_effect"):
             for arg in node.args:
                 if isinstance(arg, ast.Dict):
-                    handled |= {
+                    names |= {
                         k.value for k in arg.keys
                         if isinstance(k, ast.Constant) and isinstance(k.value, str)
                     }
+    return names
+
+
+def _shared_reads() -> set:
+    """Options consumed by helpers outside commands/.
+
+    colour.py reads --color and --no-color on behalf of every command that
+    offers them, so a per-module scan would call those silently ignored.
+    """
+    names = set()
+    for path in sorted(PACKAGE_DIR.glob("*.py")):
+        names |= _option_reads(ast.parse(path.read_text()))
+    return names
+
+
+def _declared_and_handled(path: pathlib.Path):
+    tree = ast.parse(path.read_text())
+    handled = _option_reads(tree) | _shared_reads()
 
     for func in [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]:
         declared = set()

@@ -20,6 +20,7 @@ import re
 from dataclasses import dataclass
 from typing import List, Optional
 
+from .. import colour as colour_mod
 from .. import hunks as hunks_mod
 from .. import patch as patch_mod
 from ..state import ADD, MODIFY
@@ -184,7 +185,9 @@ def _stage_one_file(ctx, entry: FileStatus) -> Optional[bool]:
     if diff.empty:
         return False
 
-    ctx.echo("diff --git a/%s b/%s" % (entry.path, entry.path))
+    palette = colour_mod.palette_for(ctx)
+    ctx.echo(colour_mod.paint_diff_line(
+        "diff --git a/%s b/%s" % (entry.path, entry.path), palette))
     selection = select_hunks(ctx, diff, base_text, entry.path)
 
     if selection.accepted:
@@ -217,6 +220,7 @@ def select_hunks(ctx, diff, base_text: str, path: str, prompt: str = "Stage this
     Shared by `git add -p`, which stages what is accepted, and
     `git stash -p`, which takes it out of the working copy instead.
     """
+    palette = colour_mod.palette_for(ctx)
     queue = [_Item(hunk) for hunk in diff.hunks]
     position: Optional[int] = 0
     quit_all = False
@@ -224,7 +228,7 @@ def select_hunks(ctx, diff, base_text: str, path: str, prompt: str = "Stage this
     while position is not None and 0 <= position < len(queue):
         item = queue[position]
         for line in diff.render(item.hunk):
-            ctx.echo(line)
+            ctx.echo(colour_mod.paint_diff_line(line, palette))
 
         answer = _ask(ctx, position, queue, splittable=item.hunk.splittable, prompt=prompt)
         if answer is None or answer == QUIT:
@@ -336,8 +340,10 @@ def _goto(ctx, diff, queue: List[_Item], position: int) -> int:
         ctx.echo("Only one hunk to go to")
         return position
 
+    palette = colour_mod.palette_for(ctx)
     for index, item in enumerate(queue, start=1):
-        ctx.echo("%s%3d: %s" % (_mark(item), index, _summary(diff, item)))
+        ctx.echo(colour_mod.paint_diff_line(
+            "%s%3d: %s" % (_mark(item), index, _summary(diff, item)), palette))
 
     ctx.stdout.write("go to which hunk? ")
     ctx.stdout.flush()

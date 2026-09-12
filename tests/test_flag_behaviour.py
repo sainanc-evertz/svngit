@@ -44,7 +44,6 @@ def test_impossible_options_are_refused_with_a_reason(harness, argv, expected):
         (["pull", "--ff-only"], "fast-forwards"),
         (["fetch", "--prune"], "nothing is cached"),
         (["log", "--decorate"], "no decoration"),
-        (["diff", "--color"], "colourise"),
         (["checkout", "--track", "feature-x"], "no upstream to set"),
         (["commit", "--no-verify", "-m", "x"], "no commit hooks"),
     ],

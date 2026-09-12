@@ -213,41 +213,11 @@ def _mbox(ctx, entry, prefix: str, number: int, total: int, opts) -> str:
     lines.append("---")
 
     diff = ctx.svn.run("diff", "-c", str(entry.revision), str(ctx.wc_root), check=False)
-    lines.append(_git_headers(ctx, diff.stdout).rstrip("\n") if diff.ok else "")
+    lines.append(
+        patch_mod.to_git_headers(diff.stdout, ctx.wc_root).rstrip("\n") if diff.ok else ""
+    )
     lines.extend([SIGNATURE, "svngit"])
     return "\n".join(lines) + "\n"
-
-
-def _git_headers(ctx, diff_text: str) -> str:
-    """Rewrite `svn diff` headers into the git form.
-
-    format-patch output is meant to be portable -- `git apply` elsewhere, or
-    `svngit apply` here -- and both expect `diff --git a/x b/x` with relative
-    paths, not svn's `Index:` plus absolute paths and revision annotations.
-    """
-    out: List[str] = []
-    for line in diff_text.splitlines():
-        if line.startswith("Index: "):
-            path = _relative(ctx, line[len("Index: ") :])
-            out.append("diff --git a/%s b/%s" % (path, path))
-            continue
-        if set(line.strip()) == {"="} and line.strip():
-            continue  # svn's rule under the Index line
-        if line.startswith("--- ") or line.startswith("+++ "):
-            marker, prefix = (line[:3], "a/") if line.startswith("---") else (line[:3], "b/")
-            out.append("%s %s%s" % (marker, prefix, _relative(ctx, line[4:])))
-            continue
-        out.append(line)
-    return "\n".join(out)
-
-
-def _relative(ctx, raw: str) -> str:
-    """Strip svn's tab annotation and make the path working-copy relative."""
-    candidate = Path(raw.split("\t")[0].strip())
-    try:
-        return candidate.resolve().relative_to(ctx.wc_root.resolve()).as_posix()
-    except (ValueError, OSError):
-        return candidate.as_posix()
 
 
 def _slug(message: str) -> str:

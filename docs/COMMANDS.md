@@ -16,6 +16,7 @@ Two conventions appear in the middle column:
 | --- | --- |
 | *no svn call* | Handled entirely inside svngit. Nothing is run, and nothing reaches the server. |
 | *ignored* | The option is accepted for compatibility but cannot change anything here. svngit says so on stderr rather than staying silent. |
+| *coloured* | Output is coloured when it goes to a terminal, following `color.ui` / `color.diff` / `color.status` and `--color[=when]`. Never when piped. |
 | — | No Subversion equivalent. The command explains what to use instead. |
 
 Two things are true throughout:
@@ -41,14 +42,15 @@ Two things are true throughout:
 | `git clone -b <name> <url>` | `svn checkout <url>/branches/<name>` | |
 | `git clone --depth N` | *ignored* | git's `--depth` limits history; svn's limits tree depth. Use `-r` for an older tree. |
 | `git init` | — | Explains that a working copy is always a checkout of a server-side repository. `--standalone <dir>` runs `svnadmin create` plus a layout commit and checks it out. |
-| `git status` | `svn status --xml` | Rendered as git's two-column status, plus unpushed local commits. Local only unless `svngit.checkupstream=true`. |
-| `git status -s` / `--porcelain` | `svn status --xml` | |
+| `git status` | `svn status --xml` | Rendered as git's two-column status, plus unpushed local commits. *Coloured.* Local only unless `svngit.checkupstream=true`. |
+| `git status -s` | `svn status --xml` | *Coloured.* |
+| `git status --porcelain` | `svn status --xml` | Never coloured: it is a promised machine format. |
 | `git add <new file>` | `svn add --parents <path>` | Also recorded in the emulated index. |
 | `git add <modified file>` | *no svn call* | Subversion has no staging area; only the index changes. |
 | `git add <deleted file>` | `svn delete --force <path>` | Stages the removal, as git does. |
 | `git add .` / `-A` | as above, for everything | |
 | `git add -u` | as above, tracked paths only | |
-| `git add -p` | *no svn call* | Stages hunk by hunk into the emulated index. Full answer set: `y n q a d s e j J k K g / ?`. Only the moves that exist are offered. |
+| `git add -p` | *no svn call* | Stages hunk by hunk into the emulated index. Full answer set: `y n q a d s e j J k K g / ?`. Only the moves that exist are offered. Hunks are *coloured*; the copy sent to `$EDITOR` by `e` is not. |
 | `git add -e` | *no svn call* | Opens the whole diff in `$EDITOR`; what survives the edit is staged. Hunk headers are recalculated, so stale `@@` counts are fine. A patch that fails to apply stages nothing. |
 | `git rm <path>` | `svn delete <path>` | |
 | `git rm --cached <path>` | `svn delete --keep-local <path>` | |
@@ -66,7 +68,7 @@ Two things are true throughout:
 
 | git | svn | Notes |
 | --- | --- | --- |
-| `git log` | `svn log --xml` | Rendered as git log. Unpushed local commits appear on top. |
+| `git log` | `svn log --xml` | Rendered as git log. Unpushed local commits appear on top. *Coloured.* |
 | `git log --oneline` | `svn log --xml` | `r413 message` |
 | `git log -n N` / `-N` | `svn log -l N` | |
 | `git log <rev>..<rev>` | `svn log -r A:B` | |
@@ -75,8 +77,8 @@ Two things are true throughout:
 | `git log -p` | `svn log --diff` | |
 | `git log --stat` / `--name-only` | `svn log -v` | |
 | `git log --graph` | *ignored* | Subversion history is linear. |
-| `git show <rev>` | `svn log -v -r N` + `svn diff -c N` | |
-| `git diff` | *staged blobs vs worktree*, `svn diff` | Honours the emulated index. |
+| `git show <rev>` | `svn log -v -r N` + `svn diff -c N` | *Coloured.* |
+| `git diff` | *staged blobs vs worktree*, `svn diff` | Honours the emulated index. *Coloured.* Headers are rewritten into git's `diff --git a/x b/x` form, so the output applies with `git apply`. |
 | `git diff --cached` | `svn cat -r BASE` vs staged blobs | |
 | `git diff HEAD` | `svn diff` | |
 | `git diff <a>..<b>` | `svn diff -r A:B` | |

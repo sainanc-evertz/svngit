@@ -5,6 +5,10 @@
 #
 # Each capture runs against a fresh demo checkout, so the text in the SVGs is
 # exactly what the tool prints -- prompts included, nothing retouched.
+#
+# Colour is turned on through config rather than a flag. These captures run
+# through a pipe, where svngit correctly disables colour, and `add -p` takes
+# no --color option -- git's does not either; it reads color.diff.
 
 set -eu
 
@@ -21,6 +25,7 @@ mkdir -p "$CAP"
 # ---------------------------------------------------------------- add -p
 DEMO_ROOT="$DEMO_ROOT" sh "$ROOT/docs/demo/setup.sh"
 cd "$DEMO_ROOT/work"
+svngit config color.ui always
 # One real fix plus one stray debug line, far enough apart to split.
 cat > parser.c <<'CODE'
 int parse_header(buf_t *buf) {
@@ -55,6 +60,7 @@ CODE
 # ------------------------------------------------------------- searching
 DEMO_ROOT="$DEMO_ROOT" sh "$ROOT/docs/demo/setup.sh"
 cd "$DEMO_ROOT/work"
+svngit config color.ui always
 svngit add notes.md >/dev/null 2>&1 || true
 svngit commit -q -m "Add notes" >/dev/null 2>&1 || true
 svngit push -q >/dev/null 2>&1 || true

@@ -11,6 +11,7 @@ import difflib
 from datetime import datetime
 from typing import Iterable, List, Optional, Sequence
 
+from .colour import Palette, paint_porcelain
 from .state import LocalCommit
 from .status import StatusReport
 from .svnclient import LogEntry
@@ -105,16 +106,17 @@ def format_local_commit(commit: LocalCommit, uuid: str = "", oneline: bool = Fal
 # status
 # ----------------------------------------------------------------------
 def format_porcelain(report: StatusReport) -> List[str]:
+    """Never coloured: --porcelain is a promised machine-readable format, and
+    escape codes in it would break whatever is parsing the output."""
     return ["%s%s %s" % (e.index, e.worktree, e.path) for e in report.entries]
 
 
-def format_short(report: StatusReport) -> List[str]:
-    lines = []
-    for entry in report.entries:
-        index = entry.index if entry.index != "?" else "?"
-        worktree = entry.worktree if entry.worktree != "?" else "?"
-        lines.append("%s%s %s" % (index, worktree, entry.path))
-    return lines
+def format_short(report: StatusReport, palette: Optional[Palette] = None) -> List[str]:
+    palette = palette or Palette.off()
+    return [
+        paint_porcelain(palette, entry.index, entry.worktree, entry.path)
+        for entry in report.entries
+    ]
 
 
 def format_long(
@@ -125,8 +127,10 @@ def format_long(
     behind: int = 0,
     pending: Sequence[LocalCommit] = (),
     display=lambda p: p,
+    palette: Optional[Palette] = None,
 ) -> List[str]:
-    lines = ["On branch %s" % branch]
+    palette = palette or Palette.off()
+    lines = ["On branch %s" % palette.paint(palette.branch, branch)]
     tracking = "Your working copy is at r%d." % revision
     if behind:
         tracking += " %d revision%s available on the server (use \"git pull\")." % (
@@ -148,7 +152,8 @@ def format_long(
         lines.append("Unmerged paths:")
         lines.append('  (use "git add <file>..." to mark resolution)')
         for entry in report.unmerged:
-            lines.append("\tboth modified:   %s" % display(entry.path))
+            lines.append("\t" + palette.paint(
+                palette.unmerged, "both modified:   %s" % display(entry.path)))
         lines.append("")
 
     staged = [e for e in report.staged if not e.unmerged]
@@ -156,7 +161,8 @@ def format_long(
         lines.append("Changes to be committed:")
         lines.append('  (use "git restore --staged <file>..." to unstage)')
         for entry in staged:
-            lines.append("\t%-16s %s" % (STATUS_WORDS.get(entry.index, "modified") + ":", display(entry.path)))
+            lines.append("\t" + palette.paint(palette.added, "%-16s %s" % (
+                STATUS_WORDS.get(entry.index, "modified") + ":", display(entry.path))))
         lines.append("")
 
     unstaged = [e for e in report.unstaged if not e.unmerged]
@@ -165,14 +171,15 @@ def format_long(
         lines.append('  (use "git add/rm <file>..." to update what will be committed)')
         lines.append('  (use "git restore <file>..." to discard changes in working directory)')
         for entry in unstaged:
-            lines.append("\t%-16s %s" % (STATUS_WORDS.get(entry.worktree, "modified") + ":", display(entry.path)))
+            lines.append("\t" + palette.paint(palette.changed, "%-16s %s" % (
+                STATUS_WORDS.get(entry.worktree, "modified") + ":", display(entry.path))))
         lines.append("")
 
     if report.untracked:
         lines.append("Untracked files:")
         lines.append('  (use "git add <file>..." to include in what will be committed)')
         for entry in report.untracked:
-            lines.append("\t%s" % display(entry.path))
+            lines.append("\t" + palette.paint(palette.untracked, display(entry.path)))
         lines.append("")
 
     if report.clean and not pending:

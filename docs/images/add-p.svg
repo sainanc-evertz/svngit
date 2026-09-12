@@ -7,36 +7,36 @@
 <text x="213" y="19.5" font-family="'SF Mono','SFMono-Regular',Menlo,Consolas,'DejaVu Sans Mono','Liberation Mono',monospace" font-size="11.5" fill="#9399b2" text-anchor="middle">git add -p — staging half a file</text>
 <g font-family="'SF Mono','SFMono-Regular',Menlo,Consolas,'DejaVu Sans Mono','Liberation Mono',monospace" font-size="13.5">
 <text x="18.0" y="40.0" xml:space="preserve"><tspan fill="#a6e3a1">$ </tspan><tspan fill="#cdd6f4">git add -p</tspan></text>
-<text x="18.0" y="60.0" xml:space="preserve" fill="#cdd6f4">diff --git a/parser.c b/parser.c</text>
-<text x="18.0" y="80.0" xml:space="preserve" fill="#cdd6f4">@@ -1,7 +1,8 @@</text>
+<text x="18.0" y="60.0" xml:space="preserve"><tspan fill="#bac2de">diff --git a/parser.c b/parser.c</tspan></text>
+<text x="18.0" y="80.0" xml:space="preserve"><tspan fill="#89dceb">@@ -1,7 +1,8 @@</tspan></text>
 <text x="18.0" y="100.0" xml:space="preserve" fill="#cdd6f4"> int parse_header(buf_t *buf) {</text>
 <text x="18.0" y="120.0" xml:space="preserve" fill="#cdd6f4">     size_t len = buf-&gt;size;</text>
-<text x="18.0" y="140.0" xml:space="preserve" fill="#cdd6f4">-    for (size_t i = 0; i &lt;= len; i++) {</text>
-<text x="18.0" y="160.0" xml:space="preserve" fill="#cdd6f4">+    for (size_t i = 0; i &lt; len; i++) {</text>
+<text x="18.0" y="140.0" xml:space="preserve"><tspan fill="#f38ba8">-    for (size_t i = 0; i &lt;= len; i++) {</tspan></text>
+<text x="18.0" y="160.0" xml:space="preserve"><tspan fill="#a6e3a1">+    for (size_t i = 0; i &lt; len; i++) {</tspan></text>
 <text x="18.0" y="180.0" xml:space="preserve" fill="#cdd6f4">         if (buf-&gt;data[i] == ':') return i;</text>
 <text x="18.0" y="200.0" xml:space="preserve" fill="#cdd6f4">     }</text>
-<text x="18.0" y="220.0" xml:space="preserve" fill="#cdd6f4">+    printf("DEBUG: no colon\n");</text>
+<text x="18.0" y="220.0" xml:space="preserve"><tspan fill="#a6e3a1">+    printf("DEBUG: no colon\n");</tspan></text>
 <text x="18.0" y="240.0" xml:space="preserve" fill="#cdd6f4">     return -1;</text>
 <text x="18.0" y="260.0" xml:space="preserve" fill="#cdd6f4"> }</text>
 <text x="18.0" y="280.0" xml:space="preserve" fill="#cdd6f4">(1/1) Stage this hunk [y,n,q,a,d,s,e,?]? s</text>
 <text x="18.0" y="300.0" xml:space="preserve" fill="#cdd6f4">Split into 2 hunks.</text>
-<text x="18.0" y="320.0" xml:space="preserve" fill="#cdd6f4">@@ -1,5 +1,5 @@</text>
+<text x="18.0" y="320.0" xml:space="preserve"><tspan fill="#89dceb">@@ -1,5 +1,5 @@</tspan></text>
 <text x="18.0" y="340.0" xml:space="preserve" fill="#cdd6f4"> int parse_header(buf_t *buf) {</text>
 <text x="18.0" y="360.0" xml:space="preserve" fill="#cdd6f4">     size_t len = buf-&gt;size;</text>
-<text x="18.0" y="380.0" xml:space="preserve" fill="#cdd6f4">-    for (size_t i = 0; i &lt;= len; i++) {</text>
-<text x="18.0" y="400.0" xml:space="preserve" fill="#cdd6f4">+    for (size_t i = 0; i &lt; len; i++) {</text>
+<text x="18.0" y="380.0" xml:space="preserve"><tspan fill="#f38ba8">-    for (size_t i = 0; i &lt;= len; i++) {</tspan></text>
+<text x="18.0" y="400.0" xml:space="preserve"><tspan fill="#a6e3a1">+    for (size_t i = 0; i &lt; len; i++) {</tspan></text>
 <text x="18.0" y="420.0" xml:space="preserve" fill="#cdd6f4">         if (buf-&gt;data[i] == ':') return i;</text>
 <text x="18.0" y="440.0" xml:space="preserve" fill="#cdd6f4">     }</text>
 <text x="18.0" y="460.0" xml:space="preserve" fill="#cdd6f4">(1/2) Stage this hunk [y,n,q,a,d,/,j,J,g,e,?]? y</text>
-<text x="18.0" y="480.0" xml:space="preserve" fill="#cdd6f4">@@ -4,4 +4,5 @@</text>
+<text x="18.0" y="480.0" xml:space="preserve"><tspan fill="#89dceb">@@ -4,4 +4,5 @@</tspan></text>
 <text x="18.0" y="500.0" xml:space="preserve" fill="#cdd6f4">         if (buf-&gt;data[i] == ':') return i;</text>
 <text x="18.0" y="520.0" xml:space="preserve" fill="#cdd6f4">     }</text>
-<text x="18.0" y="540.0" xml:space="preserve" fill="#cdd6f4">+    printf("DEBUG: no colon\n");</text>
+<text x="18.0" y="540.0" xml:space="preserve"><tspan fill="#a6e3a1">+    printf("DEBUG: no colon\n");</tspan></text>
 <text x="18.0" y="560.0" xml:space="preserve" fill="#cdd6f4">     return -1;</text>
 <text x="18.0" y="580.0" xml:space="preserve" fill="#cdd6f4"> }</text>
 <text x="18.0" y="600.0" xml:space="preserve" fill="#cdd6f4">(2/2) Stage this hunk [y,n,q,a,d,/,K,g,e,?]? n</text>
 <text x="18.0" y="620.0" xml:space="preserve" fill="#cdd6f4">Staged 1 hunk from parser.c (+1/-1).</text>
 <text x="18.0" y="640.0" xml:space="preserve"><tspan fill="#a6e3a1">$ </tspan><tspan fill="#cdd6f4">git status --short</tspan></text>
-<text x="18.0" y="660.0" xml:space="preserve" fill="#cdd6f4">?? notes.md</text>
-<text x="18.0" y="680.0" xml:space="preserve" fill="#cdd6f4">MM parser.c</text>
+<text x="18.0" y="660.0" xml:space="preserve"><tspan fill="#f38ba8">?? notes.md</tspan></text>
+<text x="18.0" y="680.0" xml:space="preserve"><tspan fill="#a6e3a1">M</tspan><tspan fill="#f38ba8">M</tspan><tspan fill="#cdd6f4"> parser.c</tspan></text>
 </g></svg>

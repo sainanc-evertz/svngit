@@ -7,7 +7,7 @@ import shutil
 from pathlib import Path
 from typing import List, Optional
 
-from .. import formatting, status as status_mod
+from .. import colour as colour_mod, formatting, status as status_mod
 from ..cliargs import no_effect, parse, refuse
 from ..errors import UsageError, SvnGitError
 from ..state import ADD, DELETE, MODIFY
@@ -148,8 +148,9 @@ def cmd_init(ctx, argv: List[str]) -> int:
 def cmd_status(ctx, argv: List[str]) -> int:
     opts = parse(
         argv,
-        flags=["short", "s", "porcelain", "branch", "b", "long", "ignored", "verbose", "v"],
+        flags=["short", "s", "porcelain", "branch", "b", "long", "ignored", "verbose", "v", "no-color"],
         values=["untracked-files", "u"],
+        optional_values=["color"],
     )
     # --long is the default format; -v adds nothing svngit can show.
     paths = ctx.to_wc_paths(opts.paths) if opts.paths else None
@@ -161,10 +162,18 @@ def cmd_status(ctx, argv: List[str]) -> int:
     elif mode not in ("normal", "all"):
         raise UsageError("invalid untracked files mode '%s' (no, normal, all)" % mode)
 
+    palette = colour_mod.palette_for(ctx, opts, keys=("color.status",))
+
     if opts.has("porcelain") or opts.has("short", "s"):
         if opts.has("branch", "b"):
             ctx.echo("## %s...origin/%s" % (ctx.branch, ctx.branch))
-        for line in formatting.format_porcelain(report):
+        # --porcelain is a stable machine format, so it is never coloured;
+        # --short is for reading, so it is.
+        if opts.has("porcelain"):
+            lines = formatting.format_porcelain(report)
+        else:
+            lines = formatting.format_short(report, palette)
+        for line in lines:
             ctx.echo(line)
         return 0
 
@@ -176,6 +185,7 @@ def cmd_status(ctx, argv: List[str]) -> int:
         behind=behind,
         pending=ctx.state.commits,
         display=ctx.display_path,
+        palette=palette,
     )
     for line in lines:
         ctx.echo(line)
