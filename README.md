@@ -22,7 +22,7 @@ server stays a Subversion server, and there is no mirror or import step.
 ## Contents
 
 - [Is this `git svn`?](#is-this-git-svn) — how they differ, and which to pick
-- [Install](#install) — including the `git` shim
+- [Install](#install) — including the `git` shim and shell completions
 - [What it covers](#what-it-covers) — all 42 commands
 - [How it thinks](#how-it-thinks) — four ideas that explain most behaviour
 - [commit and push](#commit-and-push) — the one real workflow difference
@@ -52,21 +52,30 @@ and want your muscle memory back.
 
 ## Install
 
-You need Python 3.9+ and the `svn` command-line client.
+You need Python 3.9+ and the `svn` command-line client. Nothing else — svngit
+uses only the standard library.
 
 ```bash
-pip install -e .
+pipx install svngit          # or: pip install svngit
+brew install svngit          # macOS and Linuxbrew
 ```
+
+There are also a single-file build that needs no install at all, and native
+package recipes for Arch and Debian. See
+[docs/INSTALL.md](docs/INSTALL.md) for every route, including which ones have
+actually been built and which have not.
 
 That gives you the `svngit` command. To make plain `git` work inside
-Subversion checkouts, put this repository's `bin/` directory early on your
-`PATH`:
+Subversion checkouts, put the shim directory early on your `PATH`:
 
 ```bash
-export PATH="/path/to/svngit/bin:$PATH"
+export PATH="$(svngit --shim-path):$PATH"
 ```
 
-`bin/git` is a small shim that decides where each invocation goes:
+The shim ships inside the package, so that one line is the same however you
+installed svngit — pip, pipx, Homebrew, a zipapp or a git checkout.
+
+It is a small script that decides where each invocation goes:
 
 | Where you are | What runs |
 | --- | --- |
@@ -81,6 +90,15 @@ routes correctly. To bypass the shim once:
 
 ```bash
 SVNGIT_DISABLE=1 git status   # the real git, even in an svn working copy
+```
+
+Completions for bash, zsh and fish are generated from the command list
+itself, so they never fall behind:
+
+```bash
+svngit --completion bash > /usr/local/etc/bash_completion.d/svngit
+svngit --completion zsh  > "${fpath[1]}/_svngit"
+svngit --completion fish > ~/.config/fish/completions/svngit.fish
 ```
 
 One exception. An `https://` URL could belong to either system, so the shim
@@ -344,6 +362,14 @@ To rebuild the images in this README:
 ```bash
 sh docs/demo/make.sh        # the GIF (needs vhs and ffmpeg)
 sh docs/demo/capture.sh     # capture real output for the stills
+```
+
+To build the distributable artefacts:
+
+```bash
+python -m build                        # wheel and sdist
+sh packaging/make-zipapp.sh            # single-file dist/svngit.pyz
+sh packaging/homebrew/test-local.sh    # build and test the Homebrew formula
 ```
 
 ## Status

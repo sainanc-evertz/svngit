@@ -8,14 +8,19 @@ import sys
 from pathlib import Path
 from typing import List, Optional, Sequence
 
-from . import commands
+from . import commands, completion
 from .commands import NO_EQUIVALENT, REGISTRY
 from .context import Context
 from .errors import NotAWorkingCopy, SvnGitError, UsageError
+from .shim import shim_directory
 
 def _split_global_options(argv: Sequence[str]):
     """Pull out the options that appear before the subcommand."""
-    options = {"dry_run": False, "trace": False, "cwd": None, "help": False, "version": False}
+    options = {
+        "dry_run": False, "trace": False, "cwd": None,
+        "help": False, "version": False,
+        "shim_path": False, "completion": None,
+    }
     rest = list(argv)
     while rest:
         arg = rest[0]
@@ -27,6 +32,15 @@ def _split_global_options(argv: Sequence[str]):
             options["help"] = True
         elif arg == "--version":
             options["version"] = True
+        elif arg == "--shim-path":
+            options["shim_path"] = True
+        elif arg == "--completion":
+            rest.pop(0)
+            if not rest:
+                raise UsageError(
+                    "--completion needs a shell (%s)" % ", ".join(completion.SHELLS)
+                )
+            options["completion"] = rest[0]
         elif arg in ("--no-pager", "--paginate", "-p", "--bare"):
             pass  # accepted and ignored: svngit never spawns a pager
         elif arg in ("-C", "--directory"):
@@ -49,6 +63,19 @@ def main(argv: Optional[List[str]] = None) -> int:
     except UsageError as exc:
         print("fatal: %s" % exc, file=sys.stderr)
         return exc.exit_code
+
+    # Setup options answer before any working copy is needed, so they work
+    # from anywhere -- which is the point of them.
+    if options["shim_path"]:
+        print(shim_directory())
+        return 0
+    if options["completion"]:
+        try:
+            print(completion.generate(options["completion"]), end="")
+        except ValueError as exc:
+            print("fatal: %s" % exc, file=sys.stderr)
+            return 129
+        return 0
 
     ctx = Context(
         cwd=Path(options["cwd"]).expanduser() if options["cwd"] else None,

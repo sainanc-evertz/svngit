@@ -1,0 +1,7 @@
+include LICENSE README.md
+include src/svngit/shim/git src/svngit/shim/git.cmd
+recursive-include docs *.md *.svg *.sh *.tape *.py
+recursive-include packaging *
+recursive-include tests *.py
+prune docs/images
+exclude docs/images/svngit-demo.gif
