@@ -7,7 +7,7 @@ object store, so nothing touches the server.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict
+from typing import TYPE_CHECKING, Dict
 
 import tempfile
 from pathlib import Path

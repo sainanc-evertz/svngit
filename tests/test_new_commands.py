@@ -407,3 +407,49 @@ def test_meaningless_commands_explain_themselves(harness, command, expected):
     code = harness.run(command)
     assert code == 128
     assert expected in harness.err
+
+
+# ----------------------------------------------------------------------
+# line endings
+# ----------------------------------------------------------------------
+def test_apply_preserves_lf_line_endings(harness):
+    """Applying a patch must not rewrite the file's line endings.
+
+    Writing the result in text mode translates \\n to \\r\\n on Windows, which
+    turned every line of an LF file into a change. Only Windows can fail
+    this, which is why it is worth having in CI.
+    """
+    harness.write("a.txt", "one\ntwo\nthree\n")
+    harness.set_status([])
+    assert harness.run("apply", write_patch(harness)) == 0
+    assert (harness.wc / "a.txt").read_bytes() == b"one\nTWO\nthree\n"
+
+
+def test_apply_refuses_a_crlf_file_rather_than_mangling_it():
+    """A known limitation, asserted so it stays a clean refusal.
+
+    `parse_patch` splits on lines and re-joins with \n, so a patch can only
+    reproduce LF content. Against a CRLF file the context will not match and
+    the patch is refused -- which is the right failure: nothing is written,
+    rather than the file being silently converted.
+    """
+
+
+def test_apply_on_a_crlf_file_changes_nothing(harness):
+    harness.write("a.txt", "one\r\ntwo\r\nthree\r\n")
+    harness.set_status([])
+    code = harness.run("apply", write_patch(harness))
+    assert code != 0
+    assert "does not apply" in harness.err
+    assert (harness.wc / "a.txt").read_bytes() == b"one\r\ntwo\r\nthree\r\n"
+
+
+def test_format_patch_writes_exactly_what_it_composed(harness, tmp_path):
+    harness.set_log([{"revision": 5, "message": "a change"}])
+    harness.svn.respond("diff", "Index: a.txt\n--- a.txt\n+++ a.txt\n", first=True)
+    harness.run("format-patch", "-o", str(tmp_path), "-1")
+    written = list(tmp_path.glob("*.patch"))
+    assert written
+    assert (
+        b"\r\n" not in written[0].read_bytes()
+    ), "text mode leaked CRLF into the patch"

@@ -39,7 +39,11 @@ Issues = "https://github.com/sainanc-evertz/svngit/issues"
 Documentation = "https://github.com/sainanc-evertz/svngit/blob/master/docs/COMMANDS.md"
 
 [project.optional-dependencies]
-dev = ["pytest>=7", "black>=24", "mypy>=1.8"]
+dev = ["pytest>=7"]
+# Kept out of `dev` on purpose: black needs Python 3.10+, so installing it
+# alongside the tests would break the 3.9 leg of the matrix, and a different
+# black version formats differently. CI checks these once, on one Python.
+lint = ["black>=26,<27", "mypy>=2,<3"]
 
 [project.scripts]
 svngit = "svngit.cli:main"

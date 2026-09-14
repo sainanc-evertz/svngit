@@ -212,9 +212,15 @@ class Harness:
         self.svn.respond("log", log_xml(entries), first=True)
 
     def write(self, relative: str, content: str = "hello\n") -> Path:
+        """Write exactly these bytes.
+
+        Not write_text: text mode rewrites \n as \r\n on Windows, so a test
+        that asked for LF content would silently get CRLF and every hunk in
+        the file would look changed.
+        """
         path = self.wc / relative
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content)
+        path.write_bytes(content.encode("utf-8"))
         return path
 
     def run(self, *argv: str) -> int:

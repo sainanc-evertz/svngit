@@ -97,8 +97,11 @@ def cmd_apply(ctx: "Context", argv: List[str]) -> int:
     results = []
     for file_patch in patches:
         absolute = ctx.abs_path(file_patch.path)
+        # Read and write as bytes throughout: text mode translates newlines
+        # on Windows, which would rewrite every line ending in the file the
+        # patch touches.
         current = (
-            absolute.read_text(encoding="utf-8", errors="replace")
+            absolute.read_bytes().decode("utf-8", errors="replace")
             if absolute.is_file()
             else ""
         )
@@ -117,7 +120,7 @@ def cmd_apply(ctx: "Context", argv: List[str]) -> int:
 
     for absolute, content in results:
         absolute.parent.mkdir(parents=True, exist_ok=True)
-        absolute.write_text(content, encoding="utf-8")
+        absolute.write_bytes(content.encode("utf-8"))
         if opts.has("verbose", "v"):
             ctx.echo(
                 "Applied patch to '%s' cleanly."
@@ -235,7 +238,9 @@ def cmd_format_patch(ctx: "Context", argv: List[str]) -> int:
         directory.mkdir(parents=True, exist_ok=True)
         name = "%04d-%s.patch" % (offset + start, _slug(entry.message))
         target = directory / name
-        target.write_text(body, encoding="utf-8")
+        # Written as bytes so the patch carries exactly the line endings
+        # it was composed with, on every platform.
+        target.write_bytes(body.encode("utf-8"))
         if not opts.has("quiet", "q"):
             ctx.echo(os.path.relpath(target, ctx.cwd))
     return 0
