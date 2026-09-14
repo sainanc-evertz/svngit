@@ -134,7 +134,7 @@ Two things are true throughout:
 
 | git | svn | Notes |
 | --- | --- | --- |
-| `git apply <patch>` | *no svn call* | svngit's own applier, so stale hunk headers and svn-style `Index:` headers both work. All-or-nothing: a patch that fails changes nothing. `--check`, `-R`, `--stat`, `-p<n>`. Patches are read as LF; against a CRLF file the context will not match and the patch is refused rather than converting the file. |
+| `git apply <patch>` | *no svn call* | svngit's own applier, so stale hunk headers and svn-style `Index:` headers both work. All-or-nothing: a patch that fails changes nothing. `--check`, `-R`, `--stat`, `-p<n>`. Patches are read as LF; against a CRLF file no context line can match, so the patch is refused with an error naming line endings as the cause. `git add -p` is unaffected. |
 | `git format-patch <range>` | `svn log` + `svn diff -c N` | One mbox-format file per revision, with git-style headers so `git apply` elsewhere accepts them. `--stdout`, `-o`, `-<n>`. |
 | `git archive -o <file> <rev>` | `svn export` | tar, tar.gz or zip, chosen by `--format` or the file extension. `--prefix` nests the contents. |
 

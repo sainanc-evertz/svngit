@@ -256,6 +256,20 @@ pick hunks out of a file git has never seen. It is not committed until you
 stage it properly, and `git commit` says so rather than committing an empty
 file.
 
+### Patch text is LF-only
+
+Anything that goes through patch *text* — `git add -e` and `git apply` —
+reads and writes LF line endings. Against a file that uses CRLF, no context
+line can match, so the patch is refused and says why:
+
+![git add -e on a CRLF file, refusing because the patch is LF and the file is CRLF, and suggesting dos2unix or git add -p](docs/images/crlf.svg)
+
+Nothing is written when that happens: the file is refused, never converted.
+
+**`git add -p` is unaffected.** It works on the file's own bytes rather than
+on patch text, so it stages hunks from a CRLF file and leaves the line
+endings exactly as they were.
+
 ## Colour
 
 Diffs, patches, `add -p` hunks and `git status` are coloured the way git
@@ -443,6 +457,9 @@ What that does **not** cover: a large real-world repository, a network server
 (the tests use `file://`), authentication, externals, unusual layouts, and
 merge-heavy histories. Treat `--dry-run` and `--trace` as your friends on
 first contact with a repository that matters.
+
+The known behavioural limit is [patch text being LF-only](#patch-text-is-lf-only),
+which affects `git add -e`, `git apply` and `git format-patch` on CRLF files.
 
 ## License
 

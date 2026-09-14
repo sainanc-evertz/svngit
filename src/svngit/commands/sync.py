@@ -343,10 +343,7 @@ def _count_staged_lines(ctx: "Context", change: Change) -> Tuple[int, int]:
     new = objects.read(change.blob) if change.blob else b""
     old = b""
     if change.action != ADD:
-        result = ctx.svn.run(
-            "cat", "-r", "BASE", ctx.svn_target(change.path), check=False
-        )
-        old = result.stdout.encode("utf-8") if result.ok else b""
+        old = ctx.svn.cat_bytes(ctx.svn_target(change.path), revision="BASE")
     if change.action == DELETE:
         new = b""
     if hunks_mod.is_binary(old) or hunks_mod.is_binary(new):

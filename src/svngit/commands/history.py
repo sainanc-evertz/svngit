@@ -298,9 +298,7 @@ def _staged_diff(ctx: "Context", wc_paths: Optional[List[str]]) -> str:
             continue
         target = ctx.svn_target(path)
         if entry.action == DELETE:
-            old = ctx.svn.run("cat", "-r", "BASE", target, check=False).stdout.encode(
-                "utf-8"
-            )
+            old = ctx.svn.cat_bytes(target, revision="BASE")
             chunks.extend(
                 formatting.unified_diff(old, b"", path, new_label="/dev/null")
             )
@@ -311,8 +309,7 @@ def _staged_diff(ctx: "Context", wc_paths: Optional[List[str]]) -> str:
                 formatting.unified_diff(b"", new, path, old_label="/dev/null")
             )
             continue
-        result = ctx.svn.run("cat", "-r", "BASE", target, check=False)
-        old = result.stdout.encode("utf-8") if result.ok else b""
+        old = ctx.svn.cat_bytes(target, revision="BASE")
         chunks.extend(formatting.unified_diff(old, new, path))
     return "\n".join(chunks) + ("\n" if chunks else "")
 

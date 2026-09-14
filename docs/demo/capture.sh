@@ -75,4 +75,20 @@ echo "build output" > build.log
   svngit shortlog -s 2>&1 || true
 } > "$CAP/search.txt"
 
+# ------------------------------------------------- CRLF line endings
+DEMO_ROOT="$DEMO_ROOT" sh "$ROOT/docs/demo/setup.sh"
+cd "$DEMO_ROOT/work"
+svngit config color.ui always
+printf 'int parse(void) {\r\n    return 0;\r\n}\r\n' > crlf.c
+svngit add crlf.c >/dev/null 2>&1
+svngit commit -q -m "Add a CRLF file" >/dev/null 2>&1
+svngit push -q >/dev/null 2>&1
+printf 'int parse(void) {\r\n    return 1;\r\n}\r\n' > crlf.c
+# `true` leaves the patch exactly as svngit wrote it, so the failure below is
+# the line endings and nothing the user did.
+{
+  echo '$ git add -e'
+  GIT_EDITOR=true svngit add -e 2>&1 || true
+} > "$CAP/crlf.txt"
+
 echo "captured into $CAP"

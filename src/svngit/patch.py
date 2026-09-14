@@ -261,11 +261,8 @@ def apply_file_patch(base: str, file_patch: FilePatch) -> str:
         position = _locate(base_lines, hunk.old_lines, hunk.old_start - 1, cursor)
         if position is None:
             raise PatchError(
-                "hunk #%d of %s does not apply.\n"
-                "The context lines around your edit no longer match the file. "
-                "Check that you changed '-' lines to ' ' rather than deleting "
-                "them, and that no context line was altered."
-                % (number, file_patch.path)
+                "hunk #%d of %s does not apply.\n%s"
+                % (number, file_patch.path, _why_it_failed(base_lines, hunk))
             )
         result.extend(base_lines[cursor:position])
         result.extend(hunk.new_lines)
@@ -273,6 +270,29 @@ def apply_file_patch(base: str, file_patch: FilePatch) -> str:
 
     result.extend(base_lines[cursor:])
     return "".join(result)
+
+
+def _why_it_failed(base_lines: List[str], hunk: PatchHunk) -> str:
+    """Explain a failed hunk, naming line endings when that is the cause.
+
+    A patch is parsed into LF lines, so it can never match a CRLF file. That
+    failure is not the user's edit, and telling them to check their '-' lines
+    would send them looking in the wrong place.
+    """
+    base_crlf = any(line.endswith("\r\n") for line in base_lines)
+    patch_crlf = any(line.endswith("\r\n") for line in hunk.old_lines)
+    if base_crlf and not patch_crlf:
+        return (
+            "The file uses CRLF line endings and the patch uses LF, so no "
+            "context line can match. svngit reads patches as LF; convert the "
+            "file with `dos2unix`, or use `git add -p`, which works on the "
+            "file directly and keeps CRLF intact."
+        )
+    return (
+        "The context lines around your edit no longer match the file. Check "
+        "that you changed '-' lines to ' ' rather than deleting them, and "
+        "that no context line was altered."
+    )
 
 
 def _locate(

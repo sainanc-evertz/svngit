@@ -794,3 +794,39 @@ def test_check_ignore_reads_svn_ignore(cli, svn_repo):
     assert code == 0, err
     assert "debug.log" in out
     assert cli("check-ignore", "source.c")[0] == 1
+
+
+def test_add_patch_on_a_crlf_file_sees_only_the_real_changes(cli, svn_repo):
+    """`svn cat` runs in text mode, which used to hand back LF for a CRLF
+    file. Compared against the working copy's real bytes that made every line
+    look changed, so a CRLF file could not be staged hunk by hunk at all.
+    """
+    import io
+
+    from svngit.cli import dispatch
+    from svngit.context import Context
+
+    wc = svn_repo["wc"]
+    lines = [b"line%02d\r\n" % n for n in range(1, 21)]
+    (wc / "crlf.txt").write_bytes(b"".join(lines))
+    cli("add", "crlf.txt")
+    cli("commit", "-m", "a file with CRLF endings")
+    cli("push")
+
+    changed = list(lines)
+    changed[1] = b"SECOND\r\n"
+    changed[18] = b"NINETEENTH\r\n"
+    (wc / "crlf.txt").write_bytes(b"".join(changed))
+
+    stdout, stderr = io.StringIO(), io.StringIO()
+    ctx = Context(cwd=wc, stdout=stdout, stderr=stderr, stdin=io.StringIO("y\nn\n"))
+    assert dispatch(ctx, "add", ["-p"]) == 0, stderr.getvalue()
+
+    out = stdout.getvalue()
+    assert "(1/2)" in out, "two separate edits should be two hunks:\n" + out
+    assert "-line01" not in out, "an unchanged line was reported as changed"
+
+    expected = list(lines)
+    expected[1] = b"SECOND\r\n"
+    blob = ctx.state.index["crlf.txt"].blob
+    assert ctx.state.objects.read(blob) == b"".join(expected)

@@ -161,6 +161,16 @@ class RecordingSvn(SvnClient):
         stdout, returncode, stderr = matched if matched else ("", 0, "")
         return SvnResult(argv, returncode, stdout, stderr)
 
+    def _execute_bytes(self, argv) -> bytes:
+        """The byte-exact path, so a canned `cat` response keeps its own line
+        endings instead of being decoded and re-encoded."""
+        self.calls.append(argv)
+        matched = self._match(argv)
+        stdout, returncode, _ = matched if matched else ("", 0, "")
+        if returncode != 0:
+            return b""
+        return stdout.encode("utf-8") if isinstance(stdout, str) else stdout
+
     # convenience for assertions -------------------------------------
     def argv_for(self, subcommand: str) -> Optional[List[str]]:
         for argv in self.calls:

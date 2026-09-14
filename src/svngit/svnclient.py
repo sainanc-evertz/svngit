@@ -19,6 +19,14 @@ from typing import Iterable, List, Optional, Sequence, TextIO
 
 from .errors import SvnCommandError, SvnGitError
 
+MISSING_SVN = (
+    "could not find the '%s' executable on PATH.\n"
+    "svngit translates git commands into svn commands, so a working "
+    "Subversion client is required.\n"
+    "  macOS:  brew install subversion\n"
+    "  Debian: apt install subversion"
+)
+
 # svn status letters that mean "this path differs from BASE somehow".
 DIRTY_ITEMS = frozenset(
     {"added", "conflicted", "deleted", "missing", "modified", "replaced", "obstructed"}
@@ -176,6 +184,33 @@ class SvnClient:
             raise SvnCommandError(argv, result.returncode, result.stderr)
         return result
 
+    def cat_bytes(self, target: str, revision: Optional[str] = None) -> bytes:
+        """A file's content exactly as stored, line endings included.
+
+        `run` decodes in text mode, which universal-newline-translates: the
+        content of a CRLF file would come back as LF, and comparing that
+        against the worktree's real bytes makes every line look changed.
+        Anything diffing against the working copy must use this.
+        """
+        args = ["cat", target]
+        if revision:
+            args.extend(["-r", revision])
+        argv = self._argv(args, interactive=False)
+        self.executed.append(argv)
+        if self.trace:
+            print("svngit: %s" % " ".join(argv), file=self._stderr)
+        return self._execute_bytes(argv)
+
+    def _execute_bytes(self, argv: List[str]) -> bytes:
+        """Spawn svn and return stdout undecoded. Overridden by the double."""
+        try:
+            proc = subprocess.run(
+                argv, cwd=self.cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            )
+        except FileNotFoundError:
+            raise SvnGitError(MISSING_SVN % self.binary)
+        return proc.stdout if proc.returncode == 0 else b""
+
     def _execute(
         self, argv: List[str], stdin: Optional[str], capture: bool
     ) -> SvnResult:
@@ -192,13 +227,7 @@ class SvnClient:
                 errors="replace",
             )
         except FileNotFoundError:
-            raise SvnGitError(
-                "could not find the '%s' executable on PATH.\n"
-                "svngit translates git commands into svn commands, so a working "
-                "Subversion client is required.\n"
-                "  macOS:  brew install subversion\n"
-                "  Debian: apt install subversion" % self.binary
-            )
+            raise SvnGitError(MISSING_SVN % self.binary)
         return SvnResult(argv, proc.returncode, proc.stdout or "", proc.stderr or "")
 
     def xml(self, *args: str, check: bool = True) -> Optional[ET.Element]:

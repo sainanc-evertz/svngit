@@ -145,9 +145,7 @@ def effective_base(ctx: "Context", entry: FileStatus, use_index: bool = True) ->
 
     if entry.index == ADD:
         return b""  # scheduled add with nothing committed yet: all new
-    return ctx.svn.run(
-        "cat", "-r", "BASE", ctx.svn_target(entry.path), check=False
-    ).stdout.encode("utf-8")
+    return ctx.svn.cat_bytes(ctx.svn_target(entry.path), revision="BASE")
 
 
 def _stage_blob(ctx: "Context", entry: FileStatus, content: str) -> None:
