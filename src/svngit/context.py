@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import os
 import sys
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Iterable, List, Optional, TextIO
 
 from . import layout as layout_mod
@@ -159,10 +159,16 @@ class Context:
         return self.wc_root / wc_path if wc_path else self.wc_root
 
     def display_path(self, wc_path: str) -> str:
-        """Render a working-copy path the way git would: relative to cwd."""
+        """Render a working-copy path the way git would: relative to cwd.
+
+        Always with forward slashes. git prints paths that way on every
+        platform, and os.path.relpath would give backslashes on Windows --
+        which would make svngit's output disagree with git's on the one thing
+        it is meant to imitate.
+        """
         absolute = self.abs_path(wc_path)
         try:
-            return os.path.relpath(absolute, self.cwd)
+            return PurePath(os.path.relpath(absolute, self.cwd)).as_posix()
         except ValueError:
             return wc_path
 

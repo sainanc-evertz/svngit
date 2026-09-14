@@ -48,6 +48,7 @@ def test_shim_directory_holds_both_shims():
     assert (directory / WINDOWS_SHIM).is_file(), "the Windows shim is missing"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows has no executable bit")
 def test_posix_shim_is_executable():
     """A shim on PATH that cannot be executed fails in a baffling way, and
     wheels do not carry the executable bit."""
