@@ -32,7 +32,7 @@ server stays a Subversion server, and there is no mirror or import step.
 - [Colour](#colour) — and when it is deliberately withheld
 - [Where git and Subversion disagree](#where-git-and-subversion-disagree)
 - [Configuration](#configuration) · [Development](#development) ·
-  [Status](#status)
+  [Status](#status) · [Contributing](#contributing)
 
 ## Is this `git svn`?
 
@@ -460,6 +460,12 @@ first contact with a repository that matters.
 
 The known behavioural limit is [patch text being LF-only](#patch-text-is-lf-only),
 which affects `git add -e`, `git apply` and `git format-patch` on CRLF files.
+
+## Contributing
+
+[CONTRIBUTING.md](CONTRIBUTING.md) covers the development setup, what the
+test suite enforces and why, how to add a command or an option, and the
+design rules that explain the shape of the code.
 
 ## License
 

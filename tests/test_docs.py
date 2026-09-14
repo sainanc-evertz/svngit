@@ -90,6 +90,7 @@ def test_the_readme_command_count_is_right():
 import re  # noqa: E402
 
 INSTALL = (ROOT / "docs" / "INSTALL.md").read_text()
+CONTRIBUTING = (ROOT / "CONTRIBUTING.md").read_text()
 
 #: Every prose document. INSTALL.md was missing from this for a while, so
 #: none of the link, anchor or image checks covered it -- and its install
@@ -98,6 +99,7 @@ DOCS = {
     "README.md": README,
     "docs/COMMANDS.md": MAPPING,
     "docs/INSTALL.md": INSTALL,
+    "CONTRIBUTING.md": CONTRIBUTING,
 }
 
 
@@ -174,7 +176,9 @@ def test_sample_output_is_not_hand_written():
     """The README claims every screenshot is real captured output. Keep that
     true by not letting fabricated `console` transcripts creep back in."""
     for doc, text in DOCS.items():
-        assert "```console" not in text, (
+        # Anchored to the line start: a fence only opens there. CONTRIBUTING.md
+        # mentions the marker inline while explaining this very rule.
+        assert not re.search(r"^```console", text, re.M), (
             "%s has a hand-written console block; capture it with "
             "docs/demo/capture.sh and render it instead" % doc
         )
@@ -204,7 +208,9 @@ def test_documented_extras_exist():
         defined = set(tomllib.load(handle)["project"]["optional-dependencies"])
 
     for doc, text in DOCS.items():
-        for match in re.findall(r"\.\[([a-z,]+)\]", text):
+        # Only extras in an actual install command count. Prose explaining the
+        # rule says things like `.[something]`, which names nothing real.
+        for match in re.findall(r"install[^\n`]*\.\[([a-z,]+)\]", text):
             for extra in match.split(","):
                 assert extra in defined, (
                     "%s tells the reader to install '.[%s]', but pyproject "
