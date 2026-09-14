@@ -1,0 +1,100 @@
+name: Wrong translation
+description: svngit ran, but did something different from what git would have done
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is the one to pick when a command worked but the result was
+        wrong, surprising, or not what git does.
+
+        The most useful thing you can include is the output of
+        `git --trace <your command>`, which prints every `svn` command svngit
+        ran. Most reports are diagnosable from that alone.
+
+  - type: textarea
+    id: command
+    attributes:
+      label: What you ran
+      description: The exact command, and what you expected git to do.
+      placeholder: |
+        $ git add -p src/parser.c
+        I expected two hunks, one per change.
+    validations:
+      required: true
+
+  - type: textarea
+    id: trace
+    attributes:
+      label: Output of `git --trace <command>`
+      description: >
+        Re-run with `--trace` before the subcommand. This shows every `svn`
+        invocation, which is usually where the problem is. Redact URLs or
+        paths if you need to — the shape of the commands is what matters.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What happened instead
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Output of `svngit --version`
+      description: This reports the Subversion version too, which often matters.
+      placeholder: svngit version 0.1.0 / subversion version 1.14.5
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Linux
+        - macOS
+        - Windows
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: invocation
+    attributes:
+      label: How you ran it
+      description: >
+        The shim decides between svngit and the real git by walking up for
+        `.svn` or `.git`, so this changes what was actually executed.
+      options:
+        - Through the `git` shim
+        - Calling `svngit` directly
+        - Not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: layout
+    attributes:
+      label: Repository layout
+      options:
+        - Standard (trunk / branches / tags)
+        - Non-standard, configured with `svngit.trunk` and friends
+        - Flat (the repository root is the trunk)
+        - Not sure
+    validations:
+      required: false
+
+  - type: textarea
+    id: anything-else
+    attributes:
+      label: Anything else
+      description: >
+        Line endings, a shared working copy, externals, an unusual `svn`
+        version — anything you suspect might matter.
+    validations:
+      required: false

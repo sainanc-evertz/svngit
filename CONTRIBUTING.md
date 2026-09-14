@@ -25,8 +25,8 @@ python3 -m venv .venv
 .venv/bin/pip install -e '.[dev,lint]'
 ```
 
-`dev` is pytest. `lint` is black and mypy, kept separate because black needs
-Python 3.10+ while svngit itself supports 3.9.
+`dev` is the test suite. `lint` is black and mypy, kept separate because
+black needs Python 3.10+ while svngit itself supports 3.9.
 
 Two things CI checks are not Python packages:
 

@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Command mapping
+    url: https://github.com/sainanc-evertz/svngit/blob/master/docs/COMMANDS.md
+    about: Every command svngit understands and the exact svn it runs. Worth checking first.
+  - name: Installing
+    url: https://github.com/sainanc-evertz/svngit/blob/master/docs/INSTALL.md
+    about: Install routes per OS and shell, the git shim, and shell completions.
+  - name: Contributing
+    url: https://github.com/sainanc-evertz/svngit/blob/master/CONTRIBUTING.md
+    about: Development setup, what the test suite enforces, and the design rules behind it.

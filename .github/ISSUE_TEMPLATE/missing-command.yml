@@ -1,0 +1,50 @@
+name: Missing command or option
+description: A git command or option svngit does not handle yet
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing, it is worth running the command: svngit may already
+        refuse it deliberately, with an explanation of what to use instead.
+        Twenty-four git commands cannot mean anything against Subversion, and
+        those are listed in the README.
+
+  - type: input
+    id: command
+    attributes:
+      label: The command or option
+      placeholder: git bisect run ./test.sh
+    validations:
+      required: true
+
+  - type: textarea
+    id: response
+    attributes:
+      label: What svngit says today
+      description: Paste what happens now — it may already explain itself.
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: equivalent
+    attributes:
+      label: What the Subversion equivalent would be
+      description: >
+        If you know the `svn` commands that would do the same job, say so.
+        That is most of the work of adding it. If there is no equivalent, say
+        that too — an honest refusal with a pointer to the nearest thing is a
+        perfectly good outcome, and is how svngit already handles `rebase`.
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-case
+    attributes:
+      label: What you were trying to do
+      description: >
+        The workflow, not just the command. Sometimes there is a better
+        translation than the obvious one.
+    validations:
+      required: false

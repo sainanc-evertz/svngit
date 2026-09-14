@@ -91,6 +91,7 @@ import re  # noqa: E402
 
 INSTALL = (ROOT / "docs" / "INSTALL.md").read_text()
 CONTRIBUTING = (ROOT / "CONTRIBUTING.md").read_text()
+PR_TEMPLATE = (ROOT / ".github" / "PULL_REQUEST_TEMPLATE.md").read_text()
 
 #: Every prose document. INSTALL.md was missing from this for a while, so
 #: none of the link, anchor or image checks covered it -- and its install
@@ -100,6 +101,7 @@ DOCS = {
     "docs/COMMANDS.md": MAPPING,
     "docs/INSTALL.md": INSTALL,
     "CONTRIBUTING.md": CONTRIBUTING,
+    ".github/PULL_REQUEST_TEMPLATE.md": PR_TEMPLATE,
 }
 
 

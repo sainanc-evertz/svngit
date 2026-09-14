@@ -1,0 +1,32 @@
+name: Documentation problem
+description: Something in the README, the command mapping, or CONTRIBUTING is wrong or missing
+labels: ["documentation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Instructions that no longer work are worth reporting as bugs in their
+        own right. The install instructions were wrong once for exactly this
+        reason, and nobody noticed until they were tested.
+
+  - type: dropdown
+    id: where
+    attributes:
+      label: Which document
+      options:
+        - README.md
+        - docs/COMMANDS.md
+        - docs/INSTALL.md
+        - CONTRIBUTING.md
+        - The output of `git --svngit-help`
+        - Somewhere else
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What it says, and what is wrong with it
+      description: A quote and a correction is ideal.
+    validations:
+      required: true

@@ -383,9 +383,9 @@ python3 -m venv .venv && .venv/bin/pip install -e '.[dev,lint]'
 .venv/bin/python -m pytest
 ```
 
-`dev` is pytest; `lint` is black and mypy. They are separate because black
-needs Python 3.10+, and bundling it would make the package uninstallable for
-development on 3.9 — which svngit itself still supports.
+`dev` is the test suite; `lint` is black and mypy. They are separate because
+black needs Python 3.10+, and bundling it would make the package
+uninstallable for development on 3.9 — which svngit itself still supports.
 
 The suite has two halves.
 

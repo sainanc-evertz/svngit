@@ -109,9 +109,9 @@ python3 -m venv .venv
 .venv/bin/python -m pytest
 ```
 
-That brings in pytest. Add `lint` for the formatter and type checker, which
-are a separate extra because black needs Python 3.10+ while svngit itself
-supports 3.9:
+That brings in the test suite. Add `lint` for the formatter and type checker,
+which are a separate extra because black needs Python 3.10+ while svngit
+itself supports 3.9:
 
 ```bash
 .venv/bin/pip install -e '.[dev,lint]'

@@ -39,7 +39,9 @@ Issues = "https://github.com/sainanc-evertz/svngit/issues"
 Documentation = "https://github.com/sainanc-evertz/svngit/blob/master/docs/COMMANDS.md"
 
 [project.optional-dependencies]
-dev = ["pytest>=7"]
+# PyYAML is here so the GitHub issue forms are validated by the suite: a
+# malformed one is not an error anywhere, GitHub just stops offering the form.
+dev = ["pytest>=7", "PyYAML>=6"]
 # Kept out of `dev` on purpose: black needs Python 3.10+, so installing it
 # alongside the tests would break the 3.9 leg of the matrix, and a different
 # black version formats differently. CI checks these once, on one Python.

@@ -403,3 +403,93 @@ def test_no_module_imports_stdlib_newer_than_the_supported_floor():
         "svngit supports Python %d.%d; import these inside a guarded function "
         "instead:\n  " % floor
     ) + "\n  ".join(offenders)
+
+
+# ----------------------------------------------------------------------
+# GitHub templates
+# ----------------------------------------------------------------------
+#: The shapes GitHub accepts in an issue form. A malformed one is not a test
+#: failure anywhere else -- GitHub simply stops offering the form, quietly.
+FORM_TYPES = {"markdown", "input", "textarea", "dropdown", "checkboxes"}
+
+
+def _issue_forms():
+    import yaml
+
+    directory = ROOT / ".github" / "ISSUE_TEMPLATE"
+    for path in sorted(directory.glob("*.yml")):
+        if path.name != "config.yml":
+            yield path, yaml.safe_load(path.read_text())
+
+
+@pytest.mark.skipif(
+    __import__("importlib").util.find_spec("yaml") is None, reason="needs PyYAML"
+)
+def test_issue_forms_match_githubs_schema():
+    problems = []
+    for path, form in _issue_forms():
+        for key in ("name", "description", "body"):
+            if key not in form:
+                problems.append("%s: missing '%s'" % (path.name, key))
+
+        seen = set()
+        for index, item in enumerate(form.get("body", [])):
+            where = "%s body[%d]" % (path.name, index)
+            kind = item.get("type")
+            if kind not in FORM_TYPES:
+                problems.append("%s: unknown type %r" % (where, kind))
+                continue
+            attributes = item.get("attributes", {})
+            if kind == "markdown":
+                if not attributes.get("value"):
+                    problems.append("%s: markdown needs a value" % where)
+                continue
+            if not attributes.get("label"):
+                problems.append("%s: %s needs a label" % (where, kind))
+            if kind == "dropdown" and not attributes.get("options"):
+                problems.append("%s: dropdown needs options" % where)
+            identifier = item.get("id")
+            if identifier:
+                if not re.fullmatch(r"[A-Za-z0-9_-]+", identifier):
+                    problems.append("%s: invalid id %r" % (where, identifier))
+                if identifier in seen:
+                    problems.append("%s: duplicate id %r" % (where, identifier))
+                seen.add(identifier)
+    assert not problems, "\n  ".join([""] + problems)
+
+
+@pytest.mark.skipif(
+    __import__("importlib").util.find_spec("yaml") is None, reason="needs PyYAML"
+)
+def test_issue_template_links_point_at_files_that_exist():
+    import yaml
+
+    config = yaml.safe_load(
+        (ROOT / ".github" / "ISSUE_TEMPLATE" / "config.yml").read_text()
+    )
+    for link in config.get("contact_links", []):
+        for key in ("name", "url", "about"):
+            assert key in link, "a contact link is missing '%s'" % key
+        # The links are blob URLs into this repository; the path after the
+        # branch must be a real file, or they 404 for whoever follows them.
+        match = re.search(r"/blob/[^/]+/(.+)$", link["url"])
+        if match:
+            assert (
+                ROOT / match.group(1)
+            ).exists(), "config.yml links to a missing file: %s" % match.group(1)
+
+
+def test_issue_templates_do_not_quote_a_stale_count():
+    """One template mentions how many commands are deliberately refused."""
+    from svngit.commands import NO_EQUIVALENT
+
+    words = {23: "Twenty-three", 24: "Twenty-four", 25: "Twenty-five"}
+    text = (ROOT / ".github" / "ISSUE_TEMPLATE" / "missing-command.yml").read_text()
+    expected = words.get(len(NO_EQUIVALENT))
+    assert expected, "add a spelling for %d to `words`" % len(NO_EQUIVALENT)
+    assert (
+        expected in text
+    ), "missing-command.yml should say '%s' for the %d refused commands" % (
+        expected,
+        len(NO_EQUIVALENT),
+    )
