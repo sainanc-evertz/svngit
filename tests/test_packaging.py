@@ -345,3 +345,61 @@ def test_shim_disable_forces_the_real_git(tmp_path):
     env["SVNGIT_DISABLE"] = "1"
     result = _run_shim(tmp_path, "--version", env=env)
     assert result.stdout.startswith("git version"), result.stdout + result.stderr
+
+
+# ----------------------------------------------------------------------
+# the supported Python floor
+# ----------------------------------------------------------------------
+#: Standard library modules newer than svngit's floor. Importing one at module
+#: scope breaks collection on an older interpreter, which is how tomllib got
+#: into test_docs.py and failed only on the 3.9 and 3.10 legs of CI. Inside a
+#: function guarded by a skipif it is fine, so only top-level imports count.
+TOO_NEW = {
+    "tomllib": (3, 11),
+    "asyncio.taskgroups": (3, 11),
+    "wsgiref.types": (3, 11),
+}
+
+
+def _floor():
+    text = (ROOT / "pyproject.toml").read_text()
+    match = re.search(r'requires-python\s*=\s*">=([0-9]+)\.([0-9]+)"', text)
+    assert match, "could not read requires-python from pyproject.toml"
+    return (int(match.group(1)), int(match.group(2)))
+
+
+def _top_level_imports(tree):
+    """Only imports at module scope: those run at collection time."""
+    import ast as ast_module
+
+    names = set()
+    for node in tree.body:
+        if isinstance(node, ast_module.Import):
+            names |= {alias.name for alias in node.names}
+        elif (
+            isinstance(node, ast_module.ImportFrom) and node.module and node.level == 0
+        ):
+            names.add(node.module)
+    return names
+
+
+def test_no_module_imports_stdlib_newer_than_the_supported_floor():
+    import ast as ast_module
+
+    floor = _floor()
+    offenders = []
+    for path in sorted((ROOT / "src").rglob("*.py")) + sorted(
+        (ROOT / "tests").glob("*.py")
+    ):
+        tree = ast_module.parse(path.read_text())
+        for name in _top_level_imports(tree):
+            needed = TOO_NEW.get(name)
+            if needed and needed > floor:
+                offenders.append(
+                    "%s imports %s at module scope, which needs Python %d.%d"
+                    % (path.relative_to(ROOT), name, *needed)
+                )
+    assert not offenders, (
+        "svngit supports Python %d.%d; import these inside a guarded function "
+        "instead:\n  " % floor
+    ) + "\n  ".join(offenders)

@@ -9,6 +9,9 @@ docs is the easiest mistake here, and the least visible.
 from __future__ import annotations
 
 import pathlib
+import sys
+
+import pytest
 
 from svngit.commands import NO_EQUIVALENT, REGISTRY
 from svngit.commands.plumbing import USAGE
@@ -180,6 +183,14 @@ def test_sample_output_is_not_hand_written():
 # ----------------------------------------------------------------------
 # install instructions
 # ----------------------------------------------------------------------
+#: tomllib is standard library only from 3.11, and svngit supports 3.9. These
+#: two checks still run on every newer Python in the matrix.
+needs_tomllib = pytest.mark.skipif(
+    sys.version_info < (3, 11), reason="tomllib needs Python 3.11+"
+)
+
+
+@needs_tomllib
 def test_documented_extras_exist():
     """Every `pip install -e '.[...]'` in the docs must name real extras.
 
@@ -201,6 +212,7 @@ def test_documented_extras_exist():
                 )
 
 
+@needs_tomllib
 def test_lint_tools_are_not_promised_by_the_dev_extra():
     """`dev` deliberately excludes black and mypy, because black needs Python
     3.10+ and svngit supports 3.9. The docs must not say otherwise."""
