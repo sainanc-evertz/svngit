@@ -86,7 +86,16 @@ def test_the_readme_command_count_is_right():
 # ----------------------------------------------------------------------
 import re  # noqa: E402
 
-DOCS = {"README.md": README, "docs/COMMANDS.md": MAPPING}
+INSTALL = (ROOT / "docs" / "INSTALL.md").read_text()
+
+#: Every prose document. INSTALL.md was missing from this for a while, so
+#: none of the link, anchor or image checks covered it -- and its install
+#: instructions went stale unnoticed.
+DOCS = {
+    "README.md": README,
+    "docs/COMMANDS.md": MAPPING,
+    "docs/INSTALL.md": INSTALL,
+}
 
 
 def _headings(text):
@@ -166,3 +175,43 @@ def test_sample_output_is_not_hand_written():
             "%s has a hand-written console block; capture it with "
             "docs/demo/capture.sh and render it instead" % doc
         )
+
+
+# ----------------------------------------------------------------------
+# install instructions
+# ----------------------------------------------------------------------
+def test_documented_extras_exist():
+    """Every `pip install -e '.[...]'` in the docs must name real extras.
+
+    The docs told people `[dev]` would give them black and mypy for a while
+    after those moved to their own extra, so the documented setup no longer
+    worked. This pins the two together.
+    """
+    import tomllib
+
+    with (ROOT / "pyproject.toml").open("rb") as handle:
+        defined = set(tomllib.load(handle)["project"]["optional-dependencies"])
+
+    for doc, text in DOCS.items():
+        for match in re.findall(r"\.\[([a-z,]+)\]", text):
+            for extra in match.split(","):
+                assert extra in defined, (
+                    "%s tells the reader to install '.[%s]', but pyproject "
+                    "defines only %s" % (doc, match, sorted(defined))
+                )
+
+
+def test_lint_tools_are_not_promised_by_the_dev_extra():
+    """`dev` deliberately excludes black and mypy, because black needs Python
+    3.10+ and svngit supports 3.9. The docs must not say otherwise."""
+    import tomllib
+
+    with (ROOT / "pyproject.toml").open("rb") as handle:
+        dev = " ".join(tomllib.load(handle)["project"]["optional-dependencies"]["dev"])
+
+    for tool in ("black", "mypy"):
+        if tool in dev:
+            continue
+        for doc, text in DOCS.items():
+            bad = "brings in pytest, %s" % tool
+            assert bad not in text, "%s claims '.[dev]' installs %s" % (doc, tool)

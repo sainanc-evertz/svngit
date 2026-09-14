@@ -109,9 +109,15 @@ python3 -m venv .venv
 .venv/bin/python -m pytest
 ```
 
-That brings in pytest, black and mypy. Two things CI also checks are not
-Python packages, so install them separately if you want to run everything
-locally:
+That brings in pytest. Add `lint` for the formatter and type checker, which
+are a separate extra because black needs Python 3.10+ while svngit itself
+supports 3.9:
+
+```bash
+.venv/bin/pip install -e '.[dev,lint]'
+```
+
+Two more things CI checks are not Python packages at all:
 
 ```bash
 brew install subversion shellcheck     # or apt install subversion shellcheck

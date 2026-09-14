@@ -365,15 +365,20 @@ git --dry-run push      # print the svn commands that would change something
 ## Development
 
 ```bash
-python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'
+python3 -m venv .venv && .venv/bin/pip install -e '.[dev,lint]'
 .venv/bin/python -m pytest
 ```
+
+`dev` is pytest; `lint` is black and mypy. They are separate because black
+needs Python 3.10+, and bundling it would make the package uninstallable for
+development on 3.9 — which svngit itself still supports.
 
 The suite has two halves.
 
 **Unit tests** use a recording client that replaces the subprocess call. They
 assert the exact `svn` argv each git command produces, which is the contract
-of a translation layer. The whole set runs in well under a second.
+of a translation layer. They run in a few seconds, most of which is the
+in-suite mypy check rather than the tests themselves.
 
 **Integration tests** in `test_integration.py` build a real repository over
 `file://` and check the resulting repository state. They skip themselves when
@@ -386,12 +391,16 @@ apt install subversion      # Debian/Ubuntu
 ```
 
 The package is formatted with **black** and type-checked under
-**`mypy --strict`**, both enforced by the suite rather than left to a habit:
+**`mypy --strict`**:
 
 ```bash
 black src tests docs/demo/render_svg.py
 mypy
 ```
+
+The suite checks both, but skips those two tests when the tools are not
+installed — so a run without the `lint` extra is green without having checked
+anything. CI's **format and types** job is the authority.
 
 ### What CI runs
 
