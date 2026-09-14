@@ -36,6 +36,17 @@ class FakeTTY(io.StringIO):
         return True
 
 
+@pytest.fixture(autouse=True)
+def neutral_colour_environment(monkeypatch):
+    """Start every test from a terminal-neutral environment.
+
+    NO_COLOR and TERM are honoured deliberately, so a runner that sets either
+    of them would otherwise flip the expected result of most of this file.
+    """
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setenv("TERM", "xterm-256color")
+
+
 # ----------------------------------------------------------------------
 # painting
 # ----------------------------------------------------------------------

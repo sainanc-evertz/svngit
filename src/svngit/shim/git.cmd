@@ -37,12 +37,25 @@ if "%SVNGIT_DISABLE%"=="1" goto :real
 rem Whichever marker is found first walking up wins, so a git repo checked
 rem out inside an svn working copy (or the reverse) still routes correctly.
 set "DIR=%CD%"
+set /a DEPTH=0
 :walk
 if exist "%DIR%\.git" goto :real
 if exist "%DIR%\.svn\" goto :svngit
-for %%I in ("%DIR%") do set "PARENT=%%~dpI"
-if "%PARENT:~-1%"=="\" set "PARENT=%PARENT:~0,-1%"
+
+rem "%DIR%\.." with ~f resolves to a fully qualified parent, and at the drive
+rem root it resolves to the root itself, which is what ends the loop. Using
+rem ~dp on a bare drive gives that drive's *current* directory instead, which
+rem can oscillate forever.
+set "PARENT="
+for %%I in ("%DIR%\..") do set "PARENT=%%~fI"
+if not defined PARENT goto :outside
 if /i "%PARENT%"=="%DIR%" goto :outside
+
+rem A hard stop as well: no filesystem is this deep, and a shim that hangs is
+rem far worse than one that gives up and calls the real git.
+set /a DEPTH+=1
+if %DEPTH% GTR 64 goto :outside
+
 set "DIR=%PARENT%"
 goto :walk
 

@@ -267,8 +267,10 @@ def test_diff_with_revision_range(harness):
 
 def test_diff_head_compares_worktree_against_base(harness):
     harness.run("diff", "HEAD")
-    argv = argv_string(harness, "diff")
-    assert "-r" not in argv
+    # Checked as an argument rather than a substring: a temp path can easily
+    # contain "-r" (CI runs under /tmp/pytest-of-runner) and a substring test
+    # passes locally while failing there.
+    assert "-r" not in harness.svn.argv_for("diff")
 
 
 # ----------------------------------------------------------------------
