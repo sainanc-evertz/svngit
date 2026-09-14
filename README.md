@@ -1,5 +1,7 @@
 # svngit
 
+[![CI](https://github.com/sainanc-evertz/svngit/actions/workflows/ci.yml/badge.svg)](https://github.com/sainanc-evertz/svngit/actions/workflows/ci.yml)
+
 **Type git commands. Subversion does the work.**
 
 svngit sits between you and a Subversion working copy. You run `git status`,
@@ -390,6 +392,22 @@ The package is formatted with **black** and type-checked under
 black src tests docs/demo/render_svg.py
 mypy
 ```
+
+### What CI runs
+
+Every push and pull request runs [five jobs](.github/workflows/ci.yml):
+
+| Job | What it covers |
+| --- | --- |
+| **test** | The full suite on Python 3.9–3.13 on Linux, plus 3.13 on macOS, with Subversion installed so the integration tests really run |
+| **windows** | The suite on Windows, and the `git.cmd` shim dispatching — the one piece that cannot be exercised anywhere else |
+| **format and types** | `black --check` and `mypy --strict` |
+| **shell scripts and completions** | shellcheck over the shim and every script, and the generated completions parsed by bash, zsh and fish |
+| **build and install** | Wheel, sdist and zipapp built, the wheel installed into a clean environment, and the installed shim checked for its executable bit and its routing |
+
+The test job fails if the integration tests *skip* rather than run. They skip
+themselves when `svn` is missing, and a green run built on silent skips would
+be worth very little.
 
 To rebuild the images in this README:
 

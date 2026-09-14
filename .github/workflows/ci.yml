@@ -1,0 +1,215 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  # A new push supersedes the run in progress for the same branch.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUNBUFFERED: "1"
+  # Nothing here is a terminal, so colour would be off anyway. Being explicit
+  # keeps the logs readable if a test ever forces it on.
+  NO_COLOR: "1"
+
+jobs:
+  test:
+    name: test ${{ matrix.os }} py${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Every supported Python on Linux, plus one macOS run: the state
+        # directory, the shim and the path handling differ enough between the
+        # two platforms to be worth covering.
+        os: [ubuntu-latest]
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        include:
+          - os: macos-latest
+            python: "3.13"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install Subversion
+        # Without it the integration tests skip themselves, which would make
+        # a green run mean much less than it looks.
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            sudo apt-get update
+            sudo apt-get install -y subversion
+          else
+            brew install subversion
+          fi
+          svn --version --quiet
+
+      - name: Install svngit
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+
+      - name: Run the test suite
+        run: pytest -q
+
+      - name: Check the integration tests actually ran
+        # They skip themselves when svn is missing. A silent skip here would
+        # turn the most valuable half of the suite into a no-op.
+        run: |
+          pytest tests/test_integration.py -q --collect-only > /dev/null
+          pytest tests/test_integration.py -q 2>&1 | tee result.txt
+          grep -qE "[0-9]+ passed" result.txt
+          if grep -qE "[0-9]+ skipped" result.txt; then
+            echo "::error::integration tests skipped; svn is not usable" && exit 1
+          fi
+
+  windows:
+    name: test windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install svngit
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run the test suite
+        # Subversion is not installed here, so the integration tests skip.
+        # What this job is really for is git.cmd, which cannot be exercised
+        # anywhere else.
+        run: pytest -q
+
+      - name: The Windows shim dispatches correctly
+        shell: cmd
+        run: |
+          for /f "delims=" %%S in ('python -c "from svngit.shim import shim_directory; print(shim_directory())"') do set SHIM=%%S
+          set "PATH=%SHIM%;%PATH%"
+          mkdir wc\.svn
+          pushd wc
+          git --version > out.txt 2>&1
+          type out.txt
+          findstr /c:"svngit version" out.txt || (echo Expected the shim to route to svngit && exit /b 1)
+          popd
+          mkdir plain
+          pushd plain
+          git --version > out.txt 2>&1
+          type out.txt
+          findstr /b /c:"git version" out.txt || (echo Expected the shim to route to real git && exit /b 1)
+          popd
+
+  quality:
+    name: format and types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -e '.[dev]'
+
+      - name: black
+        run: black --check --diff src tests docs/demo/render_svg.py
+
+      - name: mypy --strict
+        run: mypy
+
+  shell:
+    name: shell scripts and completions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install the shells the completions target
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck zsh fish
+
+      - run: pip install -e .
+
+      - name: shellcheck every shell script
+        # The shim is POSIX sh on purpose, so it is checked as sh rather than
+        # as bash.
+        run: |
+          shellcheck --shell=sh "$(python -c 'from svngit.shim import shim_directory; print(shim_directory())')/git"
+          shellcheck --shell=sh packaging/*.sh packaging/homebrew/*.sh docs/demo/*.sh
+
+      - name: Completions parse in every shell they target
+        run: |
+          svngit --completion bash > /tmp/svngit.bash
+          svngit --completion zsh  > /tmp/_svngit
+          svngit --completion fish > /tmp/svngit.fish
+          bash -n /tmp/svngit.bash
+          zsh -n /tmp/_svngit
+          fish --no-execute /tmp/svngit.fish
+
+      - name: bash completion actually completes
+        run: |
+          source /tmp/svngit.bash
+          COMP_WORDS=(svngit "sta"); COMP_CWORD=1
+          _svngit_completions
+          echo "svngit sta<TAB> -> ${COMPREPLY[*]}"
+          [[ " ${COMPREPLY[*]} " == *" status "* ]]
+        shell: bash
+
+  package:
+    name: build and install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Build the wheel and sdist
+        run: |
+          pip install --upgrade pip build
+          python -m build
+
+      - name: Install the wheel into a clean environment
+        # Building is not the same as installing: the shim ships as package
+        # data and wheels do not carry its executable bit.
+        run: |
+          python -m venv /tmp/clean
+          /tmp/clean/bin/pip install --quiet dist/*.whl
+          /tmp/clean/bin/svngit --version
+          SHIM=$(/tmp/clean/bin/svngit --shim-path)
+          test -x "$SHIM/git" || { echo "::error::the installed shim is not executable"; exit 1; }
+          test -f "$SHIM/git.cmd" || { echo "::error::the Windows shim is missing from the wheel"; exit 1; }
+          /tmp/clean/bin/svngit --completion bash | head -1
+
+      - name: The installed shim routes correctly
+        run: |
+          SHIM=$(/tmp/clean/bin/svngit --shim-path)
+          mkdir -p /tmp/wc/.svn
+          cd /tmp/wc
+          PATH="$SHIM:/tmp/clean/bin:$PATH" git --version | grep -q "svngit version"
+
+      - name: Build the zipapp
+        run: |
+          sh packaging/make-zipapp.sh
+          ./dist/svngit.pyz --version
+          ./dist/svngit.pyz --shim-path
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: distributions
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+            dist/svngit.pyz
+          if-no-files-found: error

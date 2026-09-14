@@ -102,12 +102,28 @@ def _headings(text):
     return found
 
 
+def _local_images(text):
+    """(alt, path) for images stored in the repository.
+
+    Remote images -- a CI badge, say -- are skipped: there is no local file
+    to check, and a badge's alt text is conventionally a short label rather
+    than a description of content.
+    """
+    found = list(re.findall(r"!\[([^\]]*)\]\(([^)]+)\)", text))
+    for tag in re.findall(r"<img[^>]*>", text, re.S):
+        src = re.search(r'src="([^"]*)"', tag)
+        alt = re.search(r'alt="([^"]*)"', tag)
+        if src:
+            found.append((alt.group(1) if alt else "", src.group(1)))
+    return [
+        (alt, ref) for alt, ref in found if not ref.startswith(("http://", "https://"))
+    ]
+
+
 def test_referenced_images_exist():
     for doc, text in DOCS.items():
         base = (ROOT / doc).parent
-        refs = re.findall(r"!\[[^\]]*\]\(([^)]+)\)", text)
-        refs += re.findall(r'<img[^>]+src="([^"]+)"', text)
-        for ref in refs:
+        for _, ref in _local_images(text):
             assert (base / ref).exists(), "%s references a missing image: %s" % (
                 doc,
                 ref,
@@ -115,16 +131,11 @@ def test_referenced_images_exist():
 
 
 def test_images_have_alt_text():
-    """The images carry real terminal output; a reader who cannot see them
-    should still learn what they show."""
+    """The screenshots carry real terminal output; a reader who cannot see
+    them should still learn what they show."""
     for doc, text in DOCS.items():
-        for alt in re.findall(r"!\[([^\]]*)\]\([^)]+\)", text):
-            assert len(alt) > 20, "%s has an image with thin alt text: %r" % (doc, alt)
-        for tag in re.findall(r"<img[^>]*>", text, re.S):
-            match = re.search(r'alt="([^"]*)"', tag)
-            assert match and len(match.group(1)) > 20, (
-                "%s has an <img> with thin alt text" % doc
-            )
+        for alt, ref in _local_images(text):
+            assert len(alt) > 20, "%s: %s has thin alt text: %r" % (doc, ref, alt)
 
 
 def test_internal_anchors_resolve():

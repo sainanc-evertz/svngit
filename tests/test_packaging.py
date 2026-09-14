@@ -243,3 +243,104 @@ def test_package_type_checks_strictly():
     """
     result = subprocess.run([_tool("mypy")], cwd=ROOT, capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+# ----------------------------------------------------------------------
+# the shim actually dispatching
+# ----------------------------------------------------------------------
+def _shim_command():
+    """How to invoke the shim on this platform."""
+    directory = shim_directory()
+    if sys.platform == "win32":
+        return [str(directory / WINDOWS_SHIM)]
+    return ["sh", str(directory / POSIX_SHIM)]
+
+
+def _svngit_bin_dir():
+    """Where the `svngit` entry point is, however svngit was installed.
+
+    Prefers this project's venv, then anything on PATH, so the same tests run
+    against a checkout and against a CI runner with a global install.
+    """
+    import shutil
+
+    for name in ("bin", "Scripts"):
+        candidate = ROOT / ".venv" / name
+        if (candidate / "svngit").exists() or (candidate / "svngit.exe").exists():
+            return candidate
+    found = shutil.which("svngit")
+    return pathlib.Path(found).parent if found else None
+
+
+def _shim_env():
+    """An environment with the shim first on PATH and svngit reachable."""
+    import os
+
+    bin_dir = _svngit_bin_dir()
+    env = dict(os.environ)
+    entries = [str(shim_directory())]
+    if bin_dir is not None:
+        entries.append(str(bin_dir))
+    entries.append(env.get("PATH", ""))
+    env["PATH"] = os.pathsep.join(entries)
+    env.pop("SVNGIT_DISABLE", None)
+    return env
+
+
+def _run_shim(cwd, *args, env=None):
+    """Run the shim and return the result.
+
+    `--version` is the probe: svngit answers "svngit version" and the real
+    git answers "git version", so the two are told apart without svn being
+    installed at all -- which is what lets these run on Windows.
+    """
+    return subprocess.run(
+        _shim_command() + list(args),
+        cwd=str(cwd),
+        env=env or _shim_env(),
+        capture_output=True,
+        text=True,
+    )
+
+
+needs_svngit = pytest.mark.skipif(
+    _svngit_bin_dir() is None, reason="svngit is not installed"
+)
+
+
+@needs_svngit
+def test_shim_routes_to_svngit_inside_a_working_copy(tmp_path):
+    (tmp_path / ".svn").mkdir()
+    result = _run_shim(tmp_path, "--version")
+    assert "svngit version" in result.stdout, result.stdout + result.stderr
+
+
+@needs_svngit
+def test_shim_routes_to_real_git_inside_a_git_repository(tmp_path):
+    (tmp_path / ".git").mkdir()
+    result = _run_shim(tmp_path, "--version")
+    assert result.stdout.startswith("git version"), result.stdout + result.stderr
+
+
+@needs_svngit
+def test_shim_routes_to_real_git_outside_any_working_copy(tmp_path):
+    result = _run_shim(tmp_path, "--version")
+    assert result.stdout.startswith("git version"), result.stdout + result.stderr
+
+
+@needs_svngit
+def test_shim_finds_the_working_copy_from_a_subdirectory(tmp_path):
+    (tmp_path / ".svn").mkdir()
+    nested = tmp_path / "src" / "deep"
+    nested.mkdir(parents=True)
+    result = _run_shim(nested, "--version")
+    assert "svngit version" in result.stdout, result.stdout + result.stderr
+
+
+@needs_svngit
+def test_shim_disable_forces_the_real_git(tmp_path):
+    (tmp_path / ".svn").mkdir()
+    env = _shim_env()
+    env["SVNGIT_DISABLE"] = "1"
+    result = _run_shim(tmp_path, "--version", env=env)
+    assert result.stdout.startswith("git version"), result.stdout + result.stderr

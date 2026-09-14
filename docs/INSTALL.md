@@ -109,6 +109,14 @@ python3 -m venv .venv
 .venv/bin/python -m pytest
 ```
 
+That brings in pytest, black and mypy. Two things CI also checks are not
+Python packages, so install them separately if you want to run everything
+locally:
+
+```bash
+brew install subversion shellcheck     # or apt install subversion shellcheck
+```
+
 ## The git shim
 
 The shim is what makes plain `git` work inside a Subversion checkout. It is

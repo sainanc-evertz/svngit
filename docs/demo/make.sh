@@ -27,7 +27,7 @@ echo "Recording..."
 rm -rf "$FRAMES"
 (cd "$ROOT" && vhs docs/demo/demo.tape >/dev/null 2>&1)
 
-frames=$(ls "$FRAMES"/frame-text-*.png 2>/dev/null | wc -l | tr -d ' ')
+frames=$(find "$FRAMES" -name 'frame-text-*.png' 2>/dev/null | wc -l | tr -d ' ')
 [ "$frames" -gt 0 ] || { echo "no frames captured" >&2; exit 1; }
 echo "Encoding $frames frames..."
 
