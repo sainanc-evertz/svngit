@@ -25,7 +25,7 @@ jobs:
         # directory, the shim and the path handling differ enough between the
         # two platforms to be worth covering.
         os: [ubuntu-latest]
-        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        python: ["3.10", "3.11", "3.12", "3.13"]
         include:
           - os: macos-latest
             python: "3.13"

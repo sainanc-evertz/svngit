@@ -352,7 +352,7 @@ def test_shim_disable_forces_the_real_git(tmp_path):
 # ----------------------------------------------------------------------
 #: Standard library modules newer than svngit's floor. Importing one at module
 #: scope breaks collection on an older interpreter, which is how tomllib got
-#: into test_docs.py and failed only on the 3.9 and 3.10 legs of CI. Inside a
+#: into test_docs.py and failed only on the oldest legs of CI. Inside a
 #: function guarded by a skipif it is fine, so only top-level imports count.
 TOO_NEW = {
     "tomllib": (3, 11),
@@ -403,6 +403,56 @@ def test_no_module_imports_stdlib_newer_than_the_supported_floor():
         "svngit supports Python %d.%d; import these inside a guarded function "
         "instead:\n  " % floor
     ) + "\n  ".join(offenders)
+
+
+def _versions(text):
+    """Every `3.10`-style version in a fragment, as comparable tuples."""
+    return [(int(a), int(b)) for a, b in re.findall(r"([0-9]+)\.([0-9]+)", text)]
+
+
+def test_the_supported_floor_is_stated_consistently():
+    """Everything that names the oldest supported Python must name the same one.
+
+    These drifted apart once and nothing failed. mypy 2.x dropped the ability
+    to target 3.9, and rather than erroring it printed a note, ignored the
+    setting and carried on checking against whatever interpreter it happened to
+    run under. pyproject went on claiming a floor the type checker was no
+    longer enforcing, and CI stayed green the whole time.
+    """
+    floor = _floor()
+    text = (ROOT / "pyproject.toml").read_text()
+
+    black = re.search(r'target-version = \["([^"]+)"\]', text)
+    assert black, "could not read black's target-version from pyproject.toml"
+    assert (
+        black.group(1) == "py%d%d" % floor
+    ), "black targets %s but requires-python says %d.%d" % (black.group(1), *floor)
+
+    mypy = re.search(r'python_version = "([^"]+)"', text)
+    assert mypy, "could not read mypy's python_version from pyproject.toml"
+    assert _versions(mypy.group(1)) == [
+        floor
+    ], "mypy checks against %s but requires-python says %d.%d" % (mypy.group(1), *floor)
+
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    matrix = re.search(r"^\s+python: \[([^\]]+)\]", workflow, re.M)
+    assert matrix, "could not read the Python matrix from ci.yml"
+    tested = _versions(matrix.group(1))
+    assert (
+        min(tested) == floor
+    ), "CI's oldest leg is %d.%d but requires-python says %d.%d" % (
+        *min(tested),
+        *floor,
+    )
+
+    # Claim exactly what is tested: a classifier is a promise to the installer.
+    claimed = _versions(" ".join(re.findall(r"Python :: ([0-9]+\.[0-9]+)", text)))
+    assert sorted(claimed) == sorted(
+        tested
+    ), "pyproject's classifiers claim %s but CI tests %s" % (
+        ", ".join("%d.%d" % v for v in sorted(claimed)),
+        ", ".join("%d.%d" % v for v in sorted(tested)),
+    )
 
 
 # ----------------------------------------------------------------------

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Build a single-file svngit that runs on any Python 3.9+, with no install.
+# Build a single-file svngit that runs on any Python 3.10+, with no install.
 #
 #     sh packaging/make-zipapp.sh
 #     ./dist/svngit.pyz --version

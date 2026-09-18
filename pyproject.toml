@@ -7,7 +7,7 @@ name = "svngit"
 version = "0.1.0"
 description = "Run git commands against a Subversion repository"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = { text = "MIT" }
 keywords = ["subversion", "svn", "git", "vcs", "version-control", "migration"]
 classifiers = [
@@ -19,7 +19,6 @@ classifiers = [
   "Operating System :: Microsoft :: Windows",
   "Operating System :: POSIX :: Linux",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
@@ -42,9 +41,9 @@ Documentation = "https://github.com/sainanc-evertz/svngit/blob/master/docs/COMMA
 # PyYAML is here so the GitHub issue forms are validated by the suite: a
 # malformed one is not an error anywhere, GitHub just stops offering the form.
 dev = ["pytest>=7", "PyYAML>=6"]
-# Kept out of `dev` on purpose: black needs Python 3.10+, so installing it
-# alongside the tests would break the 3.9 leg of the matrix, and a different
-# black version formats differently. CI checks these once, on one Python.
+# Kept out of `dev` on purpose: a different black version formats differently,
+# so every leg of the matrix pulling its own would turn a formatting check into
+# a version lottery. CI checks these once, on one Python, against a tight pin.
 lint = ["black>=26,<27", "mypy>=2,<3"]
 
 [project.scripts]
@@ -61,10 +60,10 @@ where = ["src"]
 
 [tool.black]
 line-length = 88
-target-version = ["py39"]
+target-version = ["py310"]
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.10"
 files = ["src/svngit"]
 strict = true
 # Every error is reported with its code, so a needed `type: ignore` can name

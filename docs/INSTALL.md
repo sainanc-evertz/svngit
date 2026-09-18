@@ -1,7 +1,7 @@
 # Installing svngit
 
 svngit is pure Python with no dependencies outside the standard library. The
-only thing it needs alongside Python 3.9+ is the `svn` command-line client,
+only thing it needs alongside Python 3.10+ is the `svn` command-line client,
 because that is what it drives.
 
 ## Contents
@@ -59,7 +59,7 @@ you can skip the completions section below.
 ## Single file, no install
 
 Because svngit needs nothing but the standard library, it can be built as a
-single executable archive that runs on any Python 3.9+:
+single executable archive that runs on any Python 3.10+:
 
 ```bash
 sh packaging/make-zipapp.sh
@@ -110,8 +110,8 @@ python3 -m venv .venv
 ```
 
 That brings in the test suite. Add `lint` for the formatter and type checker,
-which are a separate extra because black needs Python 3.10+ while svngit
-itself supports 3.9:
+which are a separate extra because black formats differently from version to
+version, so it is pinned tightly and run once rather than by every test leg:
 
 ```bash
 .venv/bin/pip install -e '.[dev,lint]'

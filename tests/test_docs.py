@@ -189,7 +189,7 @@ def test_sample_output_is_not_hand_written():
 # ----------------------------------------------------------------------
 # install instructions
 # ----------------------------------------------------------------------
-#: tomllib is standard library only from 3.11, and svngit supports 3.9. These
+#: tomllib is standard library only from 3.11, and svngit supports 3.10. These
 #: two checks still run on every newer Python in the matrix.
 needs_tomllib = pytest.mark.skipif(
     sys.version_info < (3, 11), reason="tomllib needs Python 3.11+"
@@ -222,8 +222,9 @@ def test_documented_extras_exist():
 
 @needs_tomllib
 def test_lint_tools_are_not_promised_by_the_dev_extra():
-    """`dev` deliberately excludes black and mypy, because black needs Python
-    3.10+ and svngit supports 3.9. The docs must not say otherwise."""
+    """`dev` deliberately excludes black and mypy, so that a formatting check
+    is pinned to one version rather than to whatever each test leg resolves.
+    The docs must not say otherwise."""
     import tomllib
 
     with (ROOT / "pyproject.toml").open("rb") as handle:

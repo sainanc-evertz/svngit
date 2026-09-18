@@ -16,7 +16,7 @@ url="https://github.com/sainanc-evertz/svngit"
 license=('MIT')
 # subversion is a runtime dependency, not an optional one: svngit translates
 # git commands into svn commands and can do nothing without a client.
-depends=('python>=3.9' 'subversion')
+depends=('python>=3.10' 'subversion')
 makedepends=('python-build' 'python-installer' 'python-setuptools' 'python-wheel')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 sha256sums=('SKIP')

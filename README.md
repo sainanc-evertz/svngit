@@ -55,7 +55,7 @@ and want your muscle memory back.
 
 ## Install
 
-You need Python 3.9+ and the `svn` command-line client. Nothing else — svngit
+You need Python 3.10+ and the `svn` command-line client. Nothing else — svngit
 uses only the standard library.
 
 ```bash
@@ -384,8 +384,8 @@ python3 -m venv .venv && .venv/bin/pip install -e '.[dev,lint]'
 ```
 
 `dev` is the test suite; `lint` is black and mypy. They are separate because
-black needs Python 3.10+, and bundling it would make the package
-uninstallable for development on 3.9 — which svngit itself still supports.
+black formats differently from version to version, so it is pinned tightly and
+run once on one Python rather than by every leg of the test matrix.
 
 The suite has two halves.
 
@@ -422,7 +422,7 @@ Every push and pull request runs [five jobs](.github/workflows/ci.yml):
 
 | Job | What it covers |
 | --- | --- |
-| **test** | The full suite on Python 3.9–3.13 on Linux, plus 3.13 on macOS, with Subversion installed so the integration tests really run |
+| **test** | The full suite on Python 3.10–3.13 on Linux, plus 3.13 on macOS, with Subversion installed so the integration tests really run |
 | **windows** | The suite on Windows, and the `git.cmd` shim dispatching — the one piece that cannot be exercised anywhere else |
 | **format and types** | `black --check` and `mypy --strict` |
 | **shell scripts and completions** | shellcheck over the shim and every script, and the generated completions parsed by bash, zsh and fish |

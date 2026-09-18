@@ -25,8 +25,9 @@ python3 -m venv .venv
 .venv/bin/pip install -e '.[dev,lint]'
 ```
 
-`dev` is the test suite. `lint` is black and mypy, kept separate because
-black needs Python 3.10+ while svngit itself supports 3.9.
+`dev` is the test suite. `lint` is black and mypy, kept separate because black
+formats differently from version to version: it is pinned tightly and run once
+on one Python, rather than by every leg of the test matrix.
 
 Two things CI checks are not Python packages:
 
@@ -76,7 +77,8 @@ wrong.
 | `test_completions_list_every_command` | Leave the shell completions behind (they are generated, so this usually passes for free). |
 | `test_sample_output_is_not_hand_written` | Put a hand-typed ```` ```console ```` block in the docs. Capture it instead — see below. |
 | `test_documented_extras_exist` | Point a reader at an install extra that pyproject does not define. |
-| `test_no_module_imports_stdlib_newer_than_the_supported_floor` | Import something like `tomllib` at module scope, which breaks collection on Python 3.9. |
+| `test_no_module_imports_stdlib_newer_than_the_supported_floor` | Import something like `tomllib` at module scope, which breaks collection on Python 3.10. |
+| `test_the_supported_floor_is_stated_consistently` | Raise or lower `requires-python` without moving the classifiers, black's target, mypy's `python_version` and the CI matrix with it. |
 | `test_recipes_track_the_project_version` | Bump the version without updating the Homebrew, Arch and Debian recipes. |
 | `test_source_is_black_formatted` / `test_package_type_checks_strictly` | Land unformatted or untyped code. Both skip when the tools are missing, so CI's **format and types** job is the authority. |
 
@@ -172,7 +174,7 @@ Before opening a pull request:
 shellcheck --shell=sh "$(.venv/bin/svngit --shim-path)/git" docs/demo/*.sh packaging/*.sh
 ```
 
-CI runs five jobs on every push: the suite on Python 3.9–3.13 on Linux and
+CI runs five jobs on every push: the suite on Python 3.10–3.13 on Linux and
 3.13 on macOS with Subversion installed, the suite plus the `git.cmd` shim on
 Windows, black and mypy, shellcheck and the completions in three shells, and a
 build-and-install check of the wheel, sdist and zipapp.
