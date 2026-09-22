@@ -9,7 +9,7 @@ from pathlib import Path, PurePath
 from typing import Iterable, List, Optional, TextIO
 
 from . import layout as layout_mod
-from .errors import NotAWorkingCopy
+from .errors import NotAWorkingCopy, PathOutsideWorkingCopy
 from .state import State
 from .svnclient import SvnClient, SvnInfo
 
@@ -157,6 +157,27 @@ class Context:
 
     def abs_path(self, wc_path: str) -> Path:
         return self.wc_root / wc_path if wc_path else self.wc_root
+
+    def abs_path_inside(self, wc_path: str) -> Path:
+        """`abs_path` for a path svngit did not produce, refusing escapes.
+
+        `abs_path` joins blindly, and pathlib drops the base entirely when the
+        right-hand side is absolute: `wc_root / "/etc/passwd"` is
+        `/etc/passwd`, and `wc_root / "../../x"` climbs out. Both are ordinary
+        contents of a patch file, so anything taking a path from patch text
+        must come through here rather than through `abs_path`.
+
+        Resolving follows symlinks too, so a link inside the working copy
+        pointing out of it is refused as well.
+        """
+        absolute = self.abs_path(wc_path)
+        try:
+            resolved = absolute.resolve()
+        except OSError:  # pragma: no cover - depends on the filesystem
+            raise PathOutsideWorkingCopy(wc_path)
+        if not resolved.is_relative_to(self.wc_root.resolve()):
+            raise PathOutsideWorkingCopy(wc_path)
+        return absolute
 
     def display_path(self, wc_path: str) -> str:
         """Render a working-copy path the way git would: relative to cwd.

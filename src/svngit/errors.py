@@ -37,6 +37,23 @@ class Unsupported(SvnGitError):
     exit_code = 128
 
 
+class PathOutsideWorkingCopy(SvnGitError):
+    """A path from input svngit did not produce that lands outside the checkout.
+
+    Patch text carries its own paths, and a patch is only as trustworthy as
+    whoever wrote it. git refuses these outright, and so must svngit: applying
+    a patch someone sent you must not be able to write to your shell profile.
+    """
+
+    exit_code = 128
+
+    def __init__(self, path: str) -> None:
+        super().__init__(
+            "invalid path '%s': it resolves outside the working copy.\n"
+            "Nothing was changed." % path
+        )
+
+
 class SvnCommandError(SvnGitError):
     exit_code = 128
 

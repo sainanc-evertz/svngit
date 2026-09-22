@@ -87,6 +87,10 @@ def cmd_apply(ctx: "Context", argv: List[str]) -> int:
 
     for file_patch in patches:
         file_patch.path = _strip_path(file_patch.path, strip)
+        # These paths came out of the patch file, not out of svngit. Check them
+        # before anything is read, written or even counted, so that --stat
+        # cannot be used to probe outside the working copy either.
+        ctx.abs_path_inside(file_patch.path)
         if opts.has("reverse", "R"):
             _reverse(file_patch)
 
@@ -96,7 +100,7 @@ def cmd_apply(ctx: "Context", argv: List[str]) -> int:
     # Apply everything in memory first: git apply is all-or-nothing.
     results = []
     for file_patch in patches:
-        absolute = ctx.abs_path(file_patch.path)
+        absolute = ctx.abs_path_inside(file_patch.path)
         # Read and write as bytes throughout: text mode translates newlines
         # on Windows, which would rewrite every line ending in the file the
         # patch touches.

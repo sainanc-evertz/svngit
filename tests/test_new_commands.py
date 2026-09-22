@@ -213,6 +213,88 @@ def test_apply_strip_level(harness):
 
 
 # ----------------------------------------------------------------------
+# apply: paths out of the patch are untrusted
+# ----------------------------------------------------------------------
+#: Every header form the parser takes a path from. Each one used to write
+#: outside the working copy: `..` is never inspected, and pathlib drops the
+#: base entirely when the right-hand side is absolute. git refuses all of
+#: these with "invalid path", which is the behaviour being matched.
+ESCAPES = {
+    "plain unified diff": """\
+--- a/a.txt
++++ b/../../ESCAPED.txt
+@@ -0,0 +1 @@
++pwned
+""",
+    "diff --git header": """\
+diff --git a/../../ESCAPED.txt b/../../ESCAPED.txt
+--- a/../../ESCAPED.txt
++++ b/../../ESCAPED.txt
+@@ -0,0 +1 @@
++pwned
+""",
+    "svn Index header": """\
+Index: ../../ESCAPED.txt
+===================================================================
+--- ../../ESCAPED.txt
++++ ../../ESCAPED.txt
+@@ -0,0 +1 @@
++pwned
+""",
+}
+
+
+@pytest.mark.parametrize("form", sorted(ESCAPES))
+def test_apply_refuses_a_patch_that_escapes_the_working_copy(harness, form, tmp_path):
+    harness.set_status([])
+    outside = harness.wc.parent.parent / "ESCAPED.txt"
+
+    code = harness.run("apply", write_patch(harness, ESCAPES[form]))
+
+    assert code != 0, "%s was accepted" % form
+    assert not outside.exists(), "%s wrote outside the working copy" % form
+    assert "invalid path" in harness.err
+
+
+def test_apply_refuses_an_absolute_path(harness, tmp_path):
+    """`-p0` keeps the leading slash, and `wc_root / "/abs"` is just `/abs`."""
+    harness.set_status([])
+    outside = tmp_path / "ABSOLUTE.txt"
+    patch = "--- %s\n+++ %s\n@@ -0,0 +1 @@\n+pwned\n" % (outside, outside)
+
+    code = harness.run("apply", "-p", "0", write_patch(harness, patch))
+
+    assert code != 0
+    assert not outside.exists()
+
+
+def test_apply_stat_refuses_an_escaping_patch_too(harness):
+    """--stat writes nothing, but it should not report on paths outside the
+    working copy either -- that is a probe, and it reads as endorsement."""
+    harness.set_status([])
+    escaping = write_patch(harness, ESCAPES["svn Index header"])
+    assert harness.run("apply", "--stat", escaping) != 0
+
+
+def test_apply_still_accepts_a_path_into_a_subdirectory(harness):
+    """The guard must not refuse ordinary patches.
+
+    A nested path contains no `..`, so resolving it stays inside the working
+    copy -- but only if the check resolves rather than pattern-matching.
+    """
+    harness.set_status([])
+    (harness.wc / "sub" / "dir").mkdir(parents=True)
+    (harness.wc / "sub" / "dir" / "a.txt").write_text("one\ntwo\nthree\n")
+    nested = PATCH.replace("diff --git a/a.txt b/a.txt\n", "")
+    nested = nested.replace("a/a.txt", "sub/dir/a.txt").replace(
+        "b/a.txt", "sub/dir/a.txt"
+    )
+
+    assert harness.run("apply", "-p", "0", write_patch(harness, nested)) == 0
+    assert (harness.wc / "sub" / "dir" / "a.txt").read_text() == "one\nTWO\nthree\n"
+
+
+# ----------------------------------------------------------------------
 # shortlog
 # ----------------------------------------------------------------------
 def test_shortlog_groups_by_author(harness):
