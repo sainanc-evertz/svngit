@@ -283,8 +283,9 @@ def test_apply_still_accepts_a_path_into_a_subdirectory(harness):
     copy -- but only if the check resolves rather than pattern-matching.
     """
     harness.set_status([])
-    (harness.wc / "sub" / "dir").mkdir(parents=True)
-    (harness.wc / "sub" / "dir" / "a.txt").write_text("one\ntwo\nthree\n")
+    # harness.write, not write_text: text mode would make this CRLF on Windows
+    # and the patch is LF, which is a refusal for an unrelated reason.
+    harness.write("sub/dir/a.txt", "one\ntwo\nthree\n")
     nested = PATCH.replace("diff --git a/a.txt b/a.txt\n", "")
     nested = nested.replace("a/a.txt", "sub/dir/a.txt").replace(
         "b/a.txt", "sub/dir/a.txt"
