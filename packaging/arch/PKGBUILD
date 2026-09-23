@@ -8,7 +8,7 @@
 # the `sha256sums=('SKIP')` in favour of the real checksum.
 
 pkgname=svngit
-pkgver=0.1.0
+pkgver=0.1.1
 pkgrel=1
 pkgdesc="Run git commands against a Subversion repository"
 arch=('any')

@@ -172,6 +172,24 @@ def test_recipes_track_the_project_version(path, pattern):
     )
 
 
+def test_the_reported_version_matches_pyproject():
+    """`svngit --version` prints `svngit.__version__`, which is a second copy
+    of the number rather than a read of the metadata.
+
+    The first bump proved why this is worth pinning: pyproject and all three
+    recipes were updated, `test_recipes_track_the_project_version` went green
+    because it only compares recipes against pyproject, and the CLI carried on
+    reporting the old version -- the one number a user actually sees, and the
+    one a bug report quotes.
+    """
+    from svngit import __version__
+
+    assert __version__ == VERSION, (
+        "svngit.__version__ is %s but pyproject says %s; `svngit --version` "
+        "would report the wrong one" % (__version__, VERSION)
+    )
+
+
 def test_every_recipe_depends_on_subversion():
     """svngit can do nothing without an svn client, so a package that does
     not pull one in is broken on a clean machine."""
