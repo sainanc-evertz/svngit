@@ -257,6 +257,137 @@ def test_apply_p2_strips_the_prefix_and_one_directory(harness):
 
 
 # ----------------------------------------------------------------------
+# apply: renames
+# ----------------------------------------------------------------------
+RENAME_ONLY = """\
+diff --git a/old.txt b/new.txt
+similarity index 100%
+rename from old.txt
+rename to new.txt
+"""
+
+RENAME_WITH_CHANGES = """\
+diff --git a/old.txt b/new.txt
+similarity index 87%
+rename from old.txt
+rename to new.txt
+--- a/old.txt
++++ b/new.txt
+@@ -1,3 +1,3 @@
+ one
+-two
++TWO
+ three
+"""
+
+
+def test_a_rename_only_patch_is_not_discarded_as_empty(harness):
+    """It carries no hunks at all -- the whole patch is the header.
+
+    The parser dropped every file with no hunks, so this arrived as
+    "unrecognized input: no patch found" and nothing moved.
+    """
+    harness.write("old.txt", "one\ntwo\nthree\n")
+    harness.set_status([])
+
+    assert harness.run("apply", write_patch(harness, RENAME_ONLY)) == 0
+    assert harness.svn.argv_for("move"), "the rename was parsed away"
+
+
+def test_a_versioned_rename_goes_through_svn_move(harness):
+    """Not a filesystem move. Subversion cannot infer a rename after the fact,
+    so moving a versioned file any other way loses its history at commit --
+    which is why this asserts the svn call and not the resulting files."""
+    harness.write("old.txt", "one\ntwo\nthree\n")
+    harness.set_status([])
+    harness.run("apply", write_patch(harness, RENAME_ONLY))
+
+    argv = harness.svn.argv_for("move")
+    assert argv is not None, "expected `svn move`, got %s" % harness.svn.subcommands
+    assert argv[-2:] == [
+        str(harness.wc / "old.txt"),
+        str(harness.wc / "new.txt"),
+    ], argv
+
+
+def test_a_rename_applies_its_hunks_to_the_moved_file(harness):
+    """The hunks describe the source and land at the destination."""
+    harness.write("old.txt", "one\ntwo\nthree\n")
+    harness.set_status([])
+
+    assert harness.run("apply", write_patch(harness, RENAME_WITH_CHANGES)) == 0
+    assert (harness.wc / "new.txt").read_text() == "one\nTWO\nthree\n"
+
+
+def test_reversing_a_rename_moves_it_back(harness):
+    harness.write("new.txt", "one\ntwo\nthree\n")
+    harness.set_status([])
+
+    assert harness.run("apply", "-R", write_patch(harness, RENAME_ONLY)) == 0
+    argv = harness.svn.argv_for("move")
+    assert argv is not None
+    assert argv[-2:] == [
+        str(harness.wc / "new.txt"),
+        str(harness.wc / "old.txt"),
+    ], (
+        "reversing should move the other way: %s" % argv
+    )
+
+
+def test_a_rename_whose_source_is_missing_changes_nothing(harness):
+    harness.set_status([])
+    code = harness.run("apply", write_patch(harness, RENAME_ONLY))
+    assert code != 0
+    assert "No such file" in harness.err
+    assert not (harness.wc / "new.txt").exists()
+
+
+def test_a_copy_is_refused_rather_than_treated_as_a_rename(harness):
+    """A copy keeps its source. Reading it as a rename would delete a file the
+    patch never asked to remove, which is worse than not applying it."""
+    harness.write("a.txt", "one\n")
+    harness.set_status([])
+    copy_patch = RENAME_ONLY.replace("rename from", "copy from").replace(
+        "rename to", "copy to"
+    )
+    copy_patch = copy_patch.replace("old.txt", "a.txt")
+
+    code = harness.run("apply", write_patch(harness, copy_patch))
+    assert code != 0
+    assert "is a copy" in harness.err
+    assert (harness.wc / "a.txt").exists(), "the source must survive a refusal"
+    assert harness.svn.argv_for("move") is None, "a refused copy must not move"
+
+
+@pytest.mark.parametrize("escaping_side", ["source", "target"])
+def test_a_rename_may_not_escape_the_working_copy_at_either_end(harness, escaping_side):
+    """A rename names two paths, and both are taken from the patch. Checking
+    only the destination would leave the delete half unguarded."""
+    harness.write("old.txt", "one\n")
+    harness.set_status([])
+    if escaping_side == "source":
+        text = RENAME_ONLY.replace("old.txt", "../../outside.txt")
+    else:
+        text = RENAME_ONLY.replace("new.txt", "../../outside.txt")
+    outside = harness.wc.parent.parent / "outside.txt"
+
+    code = harness.run("apply", write_patch(harness, text))
+
+    assert code != 0
+    assert "invalid path" in harness.err
+    assert not outside.exists()
+    assert harness.svn.argv_for("move") is None, "nothing should have moved"
+
+
+def test_rename_diffstat_names_both_ends(harness):
+    """ "3 +-" against a path that does not exist yet reads as nonsense."""
+    harness.write("old.txt", "one\ntwo\nthree\n")
+    harness.set_status([])
+    harness.run("apply", "--stat", write_patch(harness, RENAME_WITH_CHANGES))
+    assert "old.txt => new.txt" in harness.out
+
+
+# ----------------------------------------------------------------------
 # apply: paths out of the patch are untrusted
 # ----------------------------------------------------------------------
 #: Every header form the parser takes a path from. Each one used to write

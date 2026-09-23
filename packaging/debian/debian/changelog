@@ -1,3 +1,12 @@
+svngit (0.1.3-1) unstable; urgency=medium
+
+  * `git apply` now applies renames. A `rename from`/`rename to` patch moves
+    the file with `svn move`, so its history survives the commit; a plain
+    filesystem move would have committed as an unrelated delete and add.
+    Copies are refused rather than mistaken for renames.
+
+ -- Sainan Chelvarajah <sainanc@evertz.com>  Wed, 23 Sep 2026 00:00:00 -0400
+
 svngit (0.1.2-1) unstable; urgency=medium
 
   * `git apply` no longer strips one path component too many. The `a/`/`b/`

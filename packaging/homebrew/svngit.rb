@@ -13,7 +13,7 @@ class Svngit < Formula
 
   desc "Run git commands against a Subversion repository"
   homepage "https://github.com/sainanc-evertz/svngit"
-  url "https://github.com/sainanc-evertz/svngit/archive/refs/tags/v0.1.2.tar.gz"
+  url "https://github.com/sainanc-evertz/svngit/archive/refs/tags/v0.1.3.tar.gz"
   sha256 "d2386aaa799df02fb534e95236a6af967223ef246d4c526f4e36082e186630c7"
   license "MIT"
 

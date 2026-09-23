@@ -280,6 +280,15 @@ class SvnClient:
             last_changed_date=last_date,
         )
 
+    def is_versioned(self, target: str) -> bool:
+        """Whether Subversion knows this path.
+
+        `info` raises for an unversioned path, which is an ordinary answer
+        here rather than a failure: a patch can rename a file svn has never
+        been told about.
+        """
+        return self.xml("info", target, check=False) is not None
+
     def status(
         self,
         paths: Optional[Iterable[str]] = None,

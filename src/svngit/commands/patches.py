@@ -20,6 +20,7 @@ from typing import List, Optional
 from .. import formatting, patch as patch_mod, revisions as rev_mod
 from ..cliargs import Options, no_effect, parse, refuse
 from ..errors import SvnGitError, UsageError
+from ..state import ADD, DELETE
 from ..svnclient import LogEntry
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -96,6 +97,18 @@ def cmd_apply(ctx: "Context", argv: List[str]) -> int:
         # before anything is read, written or even counted, so that --stat
         # cannot be used to probe outside the working copy either.
         ctx.abs_path_inside(file_patch.path)
+        if file_patch.source_path is not None:
+            if file_patch.is_copy:
+                raise SvnGitError(
+                    "%s is a copy, which svngit does not apply. Make the copy "
+                    "yourself with `svn copy <source> %s`, then apply the rest "
+                    "of the patch." % (file_patch.path, file_patch.path)
+                )
+            file_patch.source_path = _strip_path(file_patch.source_patch_path, strip)
+            file_patch.source_prefix = ""
+            # A rename deletes one path and writes another, so the source has
+            # to clear the same check as the destination.
+            ctx.abs_path_inside(file_patch.source_path)
         if opts.has("reverse", "R"):
             _reverse(file_patch)
 
@@ -106,18 +119,32 @@ def cmd_apply(ctx: "Context", argv: List[str]) -> int:
     results = []
     for file_patch in patches:
         absolute = ctx.abs_path_inside(file_patch.path)
-        # Read and write as bytes throughout: text mode translates newlines
-        # on Windows, which would rewrite every line ending in the file the
-        # patch touches.
+        source = (
+            ctx.abs_path_inside(file_patch.source_path)
+            if file_patch.source_path is not None
+            else None
+        )
+        if source is not None and not source.is_file():
+            raise SvnGitError(
+                "%s: No such file or directory\n"
+                "error: patch failed; no files were changed."
+                % ctx.display_path(file_patch.source_path or "")
+            )
+        # A rename patches the content it is moving, so the hunks belong to the
+        # source. Read and write as bytes throughout: text mode translates
+        # newlines on Windows, which would rewrite every line ending in the
+        # file the patch touches.
+        read_from = source if source is not None else absolute
         current = (
-            absolute.read_bytes().decode("utf-8", errors="replace")
-            if absolute.is_file()
+            read_from.read_bytes().decode("utf-8", errors="replace")
+            if read_from.is_file()
             else ""
         )
         try:
-            results.append((absolute, patch_mod.apply_file_patch(current, file_patch)))
+            content = patch_mod.apply_file_patch(current, file_patch)
         except patch_mod.PatchError as exc:
             raise SvnGitError("%s\nerror: patch failed; no files were changed." % exc)
+        results.append((file_patch, source, absolute, content))
 
     if opts.has("check"):
         if not opts.has("quiet", "q"):
@@ -127,15 +154,51 @@ def cmd_apply(ctx: "Context", argv: List[str]) -> int:
             )
         return 0
 
-    for absolute, content in results:
+    staged_a_rename = False
+    for file_patch, source, absolute, content in results:
         absolute.parent.mkdir(parents=True, exist_ok=True)
+        moved_by_svn = source is not None and _rename(ctx, source, absolute)
         absolute.write_bytes(content.encode("utf-8"))
+        if moved_by_svn:
+            # svn move has already scheduled both halves, so the rename is
+            # staged as far as Subversion is concerned. Record it in svngit's
+            # state too: `git status` reads svn, but `git commit` reads this,
+            # and without it the rename showed up in one and not the other.
+            # Snapshot after the write, so the staged blob is the patched file.
+            ctx.state.stage(str(file_patch.source_path), DELETE)
+            ctx.state.stage(file_patch.path, ADD, ctx.snapshot(file_patch.path))
+            staged_a_rename = True
         if opts.has("verbose", "v"):
-            ctx.echo(
-                "Applied patch to '%s' cleanly."
-                % ctx.display_path(absolute.relative_to(ctx.wc_root).as_posix())
-            )
+            target = ctx.display_path(file_patch.path)
+            if source is None:
+                ctx.echo("Applied patch to '%s' cleanly." % target)
+            else:
+                ctx.echo(
+                    "Renamed '%s' to '%s' and applied the patch cleanly."
+                    % (ctx.display_path(str(file_patch.source_path)), target)
+                )
+    if staged_a_rename:
+        ctx.state.save()
     return 0
+
+
+def _rename(ctx: "Context", source: Path, target: Path) -> bool:
+    """Move a file, keeping its history when Subversion knows the source.
+
+    git's own `apply` touches only the worktree and leaves `git add` to infer
+    the rename afterwards from content similarity. Subversion has no rename
+    detection to infer it with: a plain filesystem move leaves the old path
+    missing and the new one unversioned, and committing that loses the file's
+    history for good. `svn move` is the only way to move a versioned file *as*
+    a move, and it schedules the change, so a rename arrives staged where an
+    ordinary hunk does not. Subversion forces that difference; it is not a
+    choice svngit is free to make.
+    """
+    if ctx.svn.is_versioned(str(source)):
+        ctx.svn.run("move", str(source), str(target), mutating=True)
+        return True
+    source.replace(target)
+    return False
 
 
 def _read_patch(paths: List[str]) -> str:
@@ -153,6 +216,12 @@ def _strip_path(path: str, strip: int) -> str:
 def _reverse(file_patch: patch_mod.FilePatch) -> None:
     for hunk in file_patch.hunks:
         hunk.old_lines, hunk.new_lines = hunk.new_lines, hunk.old_lines
+    if file_patch.source_path is not None:
+        # Undoing a rename means moving it back, so the two ends swap.
+        file_patch.path, file_patch.source_path = (
+            file_patch.source_path,
+            file_patch.path,
+        )
 
 
 def _report(ctx: "Context", patches: List[patch_mod.FilePatch], opts: Options) -> int:
@@ -163,15 +232,23 @@ def _report(ctx: "Context", patches: List[patch_mod.FilePatch], opts: Options) -
             added, removed = patch_mod.hunk_stats(hunk)
             insertions += added
             deletions += removed
-        rows.append((file_patch.path, insertions, deletions))
+        # git names both ends of a rename in a diffstat, because "3 +-" against
+        # a path that does not exist yet reads as nonsense on its own.
+        label = file_patch.path
+        if file_patch.source_path is not None:
+            label = "%s => %s" % (file_patch.source_path, file_patch.path)
+        rows.append((label, insertions, deletions))
 
     if opts.has("numstat"):
         for path, insertions, deletions in rows:
             ctx.echo("%d\t%d\t%s" % (insertions, deletions, path))
         return 0
     if opts.has("summary"):
-        for path, _, _ in rows:
-            ctx.echo(" %s" % path)
+        for file_patch in patches:
+            if file_patch.source_path is not None:
+                ctx.echo(" rename %s => %s" % (file_patch.source_path, file_patch.path))
+            else:
+                ctx.echo(" %s" % file_patch.path)
         return 0
     for line in formatting.format_diffstat(rows):
         ctx.echo(line)

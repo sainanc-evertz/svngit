@@ -732,6 +732,90 @@ def test_apply_a_format_patch_for_a_file_in_a_subdirectory(cli, svn_repo, tmp_pa
     assert (wc / "src" / "a.txt").read_text() == "one\nTWO\nthree\n"
 
 
+def test_applying_a_rename_keeps_the_file_history(cli, svn_repo, tmp_path):
+    """The whole reason `apply` uses `svn move` rather than moving the file.
+
+    git leaves a rename in the worktree and lets `git add` infer it afterwards
+    from content. Subversion has no rename detection to infer it with, so a
+    plain move would commit as an unrelated delete and add, and the file's
+    history would be gone for good. This checks the repository, not the
+    working copy: only the committed result can show whether history survived.
+    """
+    wc = svn_repo["wc"]
+    (wc / "old.txt").write_text("one\ntwo\nthree\n")
+    cli("add", "old.txt")
+    cli("commit", "-m", "seed")
+    cli("push")
+
+    patch = tmp_path / "rename.patch"
+    patch.write_text(
+        "diff --git a/old.txt b/new.txt\n"
+        "similarity index 87%\n"
+        "rename from old.txt\n"
+        "rename to new.txt\n"
+        "--- a/old.txt\n"
+        "+++ b/new.txt\n"
+        "@@ -1,3 +1,3 @@\n one\n-two\n+TWO\n three\n"
+    )
+    code, out, err = cli("apply", str(patch))
+    assert code == 0, err
+    assert not (wc / "old.txt").exists()
+    assert (wc / "new.txt").read_text() == "one\nTWO\nthree\n"
+
+    # svn scheduled the move, so it is already staged; `git status` and
+    # `git commit` have to agree about that or the rename is committed by one
+    # and invisible to the other.
+    code, out, err = cli("status", "--short")
+    assert "A  new.txt" in out and "D  old.txt" in out, out
+
+    code, out, err = cli("commit", "-m", "rename old.txt to new.txt")
+    assert code == 0, err
+    code, out, err = cli("push")
+    assert code == 0, err
+
+    log = subprocess.run(
+        ["svn", "log", "-v", "-r", "HEAD", svn_repo["url"]],
+        capture_output=True,
+        text=True,
+    ).stdout
+    # The "(from ...)" is the whole point: it is what makes `svn log` and
+    # `svn blame` on the new path still reach the revisions before the rename.
+    assert "A /trunk/new.txt (from /trunk/old.txt:" in log, log
+    assert "D /trunk/old.txt" in log, log
+
+    blame = subprocess.run(
+        ["svn", "blame", svn_repo["url"] + "/trunk/new.txt"],
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    revisions = {line.split()[0] for line in blame if line.split()}
+    assert len(revisions) > 1, (
+        "every line is attributed to the rename revision, so the history was "
+        "lost:\n%s" % "\n".join(blame)
+    )
+
+
+def test_applying_a_rename_of_an_unversioned_file_just_moves_it(
+    cli, svn_repo, tmp_path
+):
+    """svn cannot move what it does not track, so this falls back to the
+    filesystem -- and there is no history to lose."""
+    wc = svn_repo["wc"]
+    (wc / "scratch.txt").write_text("one\n")
+
+    patch = tmp_path / "rename.patch"
+    patch.write_text(
+        "diff --git a/scratch.txt b/moved.txt\n"
+        "similarity index 100%\n"
+        "rename from scratch.txt\n"
+        "rename to moved.txt\n"
+    )
+    code, out, err = cli("apply", str(patch))
+    assert code == 0, err
+    assert not (wc / "scratch.txt").exists()
+    assert (wc / "moved.txt").read_text() == "one\n"
+
+
 def test_archive_exports_a_revision(cli, svn_repo, tmp_path):
     import tarfile
     import zipfile

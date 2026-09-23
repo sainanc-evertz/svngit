@@ -56,11 +56,23 @@ class FilePatch:
     #: counts components of the path *as the patch wrote it*, and the prefix is
     #: one of them. Keeping it here lets both have what they need.
     prefix: str = ""
+    #: For a rename or a copy, where the content comes from, with its own
+    #: prefix. None for an ordinary patch.
+    source_path: Optional[str] = None
+    source_prefix: str = ""
+    #: A copy keeps its source. Parsed so `apply` can refuse it by name
+    #: instead of silently treating it as a rename and deleting the original.
+    is_copy: bool = False
 
     @property
     def patch_path(self) -> str:
         """The path as the patch wrote it, which is what `-p<n>` strips."""
         return self.prefix + self.path
+
+    @property
+    def source_patch_path(self) -> str:
+        """The source path as the patch wrote it. `-p<n>` strips this too."""
+        return self.source_prefix + (self.source_path or "")
 
 
 # ----------------------------------------------------------------------
@@ -156,6 +168,10 @@ def parse_patch(text: str, default_path: Optional[str] = None) -> List[FilePatch
     hunk: Optional[PatchHunk] = None
     #: Which side(s) the last emitted body line went to, for the no-newline marker.
     last_sides: Tuple[str, ...] = ()
+    #: The `a/` side of the last `diff --git`. A `rename from` line names the
+    #: source without its prefix, and `-p<n>` has to count that prefix, so the
+    #: header is the usable source of the path and this carries it forward.
+    old_side: Tuple[str, str] = ("", "")
 
     for raw in text.splitlines():
         if raw == MBOX_SIGNATURE:
@@ -166,10 +182,18 @@ def parse_patch(text: str, default_path: Optional[str] = None) -> List[FilePatch
             continue  # git strips comment lines from the edited patch
 
         if raw.startswith("diff --git "):
-            prefix, path = _path_from_diff_header(raw)
+            old_side, (prefix, path) = _paths_from_diff_header(raw)
             current = FilePatch(path, prefix=prefix)
             files.append(current)
             hunk = None
+            continue
+
+        if raw.startswith("rename from ") or raw.startswith("copy from "):
+            # The header's own `a/` side is used rather than the path on this
+            # line, so that `-p<n>` counts the same components on both sides.
+            if current is not None:
+                current.source_prefix, current.source_path = old_side
+                current.is_copy = raw.startswith("copy from ")
             continue
 
         if raw.startswith("Index: "):
@@ -229,14 +253,26 @@ def parse_patch(text: str, default_path: Optional[str] = None) -> List[FilePatch
                 "or '+'):\n  %s" % raw
             )
 
-    return [f for f in files if f.hunks]
+    # A pure rename carries no hunks at all -- the whole patch is the header --
+    # so hunks alone cannot decide whether there is anything to do. Everything
+    # else with no hunks is dropped as before: `add -e` uses that to mean the
+    # user deleted a file's changes from the buffer.
+    return [f for f in files if f.hunks or f.source_path is not None]
 
 
-def _path_from_diff_header(line: str) -> Tuple[str, str]:
+def _paths_from_diff_header(line: str) -> Tuple[Tuple[str, str], Tuple[str, str]]:
+    """Both sides of a `diff --git a/old b/new` line, each split from its prefix.
+
+    The two sides differ only for a rename or a copy; everything else names the
+    same file twice. Split on " b/" rather than on whitespace, because a path
+    may legitimately contain spaces and only the prefix is a reliable landmark.
+    """
     remainder = line[len("diff --git ") :]
     if " b/" in remainder:
-        return "b/", remainder.split(" b/", 1)[1].strip()
-    return _split_prefix(remainder.split()[-1])
+        old, new = remainder.split(" b/", 1)
+        return _split_prefix(old.strip()), ("b/", new.strip())
+    parts = remainder.split()
+    return _split_prefix(parts[0]), _split_prefix(parts[-1])
 
 
 def _header_path(text: str) -> Tuple[str, str]:
