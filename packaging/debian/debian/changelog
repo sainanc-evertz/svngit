@@ -1,3 +1,11 @@
+svngit (0.1.2-1) unstable; urgency=medium
+
+  * `git apply` no longer strips one path component too many. The `a/`/`b/`
+    prefix was removed while parsing and then counted again by `-p<n>`, so
+    any patch touching a file in a subdirectory resolved to the wrong path.
+
+ -- Sainan Chelvarajah <sainanc@evertz.com>  Wed, 23 Sep 2026 00:00:00 -0400
+
 svngit (0.1.1-1) unstable; urgency=high
 
   * SECURITY: `git apply` no longer writes outside the working copy. Paths

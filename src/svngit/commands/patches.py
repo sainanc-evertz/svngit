@@ -86,7 +86,12 @@ def cmd_apply(ctx: "Context", argv: List[str]) -> int:
         raise SvnGitError("unrecognized input: no patch found")
 
     for file_patch in patches:
-        file_patch.path = _strip_path(file_patch.path, strip)
+        # -p<n> counts components of the path as the patch wrote it, and the
+        # `a/`/`b/` prefix is one of them. The parser removed it, so put it
+        # back before stripping -- otherwise `-p1` eats the prefix *and* the
+        # first real directory.
+        file_patch.path = _strip_path(file_patch.patch_path, strip)
+        file_patch.prefix = ""
         # These paths came out of the patch file, not out of svngit. Check them
         # before anything is read, written or even counted, so that --stat
         # cannot be used to probe outside the working copy either.

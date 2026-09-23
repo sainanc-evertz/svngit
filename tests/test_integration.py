@@ -701,6 +701,37 @@ def test_apply_a_patch_produced_by_format_patch(cli, svn_repo, tmp_path):
     assert (wc / "a.txt").read_text() == "one\nTWO\nthree\n"
 
 
+def test_apply_a_format_patch_for_a_file_in_a_subdirectory(cli, svn_repo, tmp_path):
+    """The same round trip, one directory down.
+
+    The version above patches `a.txt` at the root, which is the one shape that
+    hid a `-p1` bug: the prefix was stripped twice, and for a top-level file
+    the second strip had nothing left to take. Anything nested went to the
+    wrong path, which is most real patches.
+    """
+    wc = svn_repo["wc"]
+    (wc / "src").mkdir()
+    (wc / "src" / "a.txt").write_text("one\ntwo\nthree\n")
+    cli("add", "src")
+    cli("commit", "-m", "seed")
+    cli("push")
+
+    (wc / "src" / "a.txt").write_text("one\nTWO\nthree\n")
+    cli("add", "src/a.txt")
+    cli("commit", "-m", "change two")
+    cli("push")
+
+    out_dir = tmp_path / "patches"
+    code, out, err = cli("format-patch", "-o", str(out_dir), "-1")
+    assert code == 0, err
+    written = sorted(out_dir.glob("*.patch"))
+
+    (wc / "src" / "a.txt").write_text("one\ntwo\nthree\n")
+    code, out, err = cli("apply", str(written[0]))
+    assert code == 0, err
+    assert (wc / "src" / "a.txt").read_text() == "one\nTWO\nthree\n"
+
+
 def test_archive_exports_a_revision(cli, svn_repo, tmp_path):
     import tarfile
     import zipfile

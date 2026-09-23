@@ -49,6 +49,18 @@ class PatchHunk:
 class FilePatch:
     path: str
     hunks: List[PatchHunk] = field(default_factory=list)
+    #: The `a/` or `b/` the header carried, if it had one.
+    #:
+    #: `path` has it removed, because everything except `apply` wants a
+    #: working-copy path to match against. `apply` wants the opposite: `-p<n>`
+    #: counts components of the path *as the patch wrote it*, and the prefix is
+    #: one of them. Keeping it here lets both have what they need.
+    prefix: str = ""
+
+    @property
+    def patch_path(self) -> str:
+        """The path as the patch wrote it, which is what `-p<n>` strips."""
+        return self.prefix + self.path
 
 
 # ----------------------------------------------------------------------
@@ -154,7 +166,8 @@ def parse_patch(text: str, default_path: Optional[str] = None) -> List[FilePatch
             continue  # git strips comment lines from the edited patch
 
         if raw.startswith("diff --git "):
-            current = FilePatch(_path_from_diff_header(raw))
+            prefix, path = _path_from_diff_header(raw)
+            current = FilePatch(path, prefix=prefix)
             files.append(current)
             hunk = None
             continue
@@ -162,7 +175,8 @@ def parse_patch(text: str, default_path: Optional[str] = None) -> List[FilePatch
         if raw.startswith("Index: "):
             # svn's own diff header. Its `---`/`+++` lines carry a revision
             # annotation, so the Index line is the cleaner source of the path.
-            current = FilePatch(_header_path(raw[len("Index: ") :]))
+            prefix, path = _header_path(raw[len("Index: ") :])
+            current = FilePatch(path, prefix=prefix)
             files.append(current)
             hunk = None
             continue
@@ -171,7 +185,8 @@ def parse_patch(text: str, default_path: Optional[str] = None) -> List[FilePatch
             continue
         if raw.startswith("+++ "):
             if current is None:
-                current = FilePatch(_header_path(raw[4:]))
+                prefix, path = _header_path(raw[4:])
+                current = FilePatch(path, prefix=prefix)
                 files.append(current)
             continue
 
@@ -217,27 +232,33 @@ def parse_patch(text: str, default_path: Optional[str] = None) -> List[FilePatch
     return [f for f in files if f.hunks]
 
 
-def _path_from_diff_header(line: str) -> str:
+def _path_from_diff_header(line: str) -> Tuple[str, str]:
     remainder = line[len("diff --git ") :]
     if " b/" in remainder:
-        return remainder.split(" b/", 1)[1].strip()
-    return _strip_prefix(remainder.split()[-1])
+        return "b/", remainder.split(" b/", 1)[1].strip()
+    return _split_prefix(remainder.split()[-1])
 
 
-def _header_path(text: str) -> str:
+def _header_path(text: str) -> Tuple[str, str]:
     """The path out of a `---`/`+++`/`Index:` line.
 
     svn appends a tab and an annotation -- `(revision 3)`, `(working copy)` --
     which is not part of the name.
     """
-    return _strip_prefix(text.split("\t")[0].strip())
+    return _split_prefix(text.split("\t")[0].strip())
 
 
-def _strip_prefix(path: str) -> str:
+def _split_prefix(path: str) -> Tuple[str, str]:
+    """Separate a leading `a/` or `b/` from the rest of the path.
+
+    Returned rather than discarded: `apply` has to put it back to count
+    components for `-p<n>`. svn's own `Index:` paths carry no prefix, so the
+    first element is often empty.
+    """
     for prefix in ("a/", "b/"):
         if path.startswith(prefix):
-            return path[2:]
-    return path
+            return prefix, path[2:]
+    return "", path
 
 
 def _old_start(header: str) -> int:

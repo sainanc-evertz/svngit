@@ -212,6 +212,50 @@ def test_apply_strip_level(harness):
     assert (harness.wc / "a.txt").read_text() == "one\nTWO\nthree\n"
 
 
+def nested_patch():
+    """PATCH, but for a file two directories down, prefixes intact."""
+    return PATCH.replace("a/a.txt", "a/sub/dir/a.txt").replace(
+        "b/a.txt", "b/sub/dir/a.txt"
+    )
+
+
+def test_apply_does_not_count_the_prefix_twice(harness):
+    """`-p1` strips one component, and in a git-format patch that component is
+    the `a/`/`b/` prefix -- not the first real directory.
+
+    The parser removes the prefix while reading the header, so stripping again
+    took a directory with it and `a/sub/dir/a.txt` became `dir/a.txt`. Only
+    top-level files escaped, because `_strip_path` falls back to the basename
+    when there is nothing left to strip, which is why every test above missed
+    it: they all patch `a.txt` at the root.
+    """
+    harness.set_status([])
+    harness.write("sub/dir/a.txt", "one\ntwo\nthree\n")
+
+    assert harness.run("apply", write_patch(harness, nested_patch())) == 0
+    assert (harness.wc / "sub" / "dir" / "a.txt").read_text() == "one\nTWO\nthree\n"
+
+
+def test_apply_p0_treats_the_prefix_as_a_real_directory(harness):
+    """-p0 strips nothing, so `b/` is a directory name like any other."""
+    harness.set_status([])
+    harness.write("b/sub/dir/a.txt", "one\ntwo\nthree\n")
+
+    assert harness.run("apply", "-p", "0", write_patch(harness, nested_patch())) == 0
+    assert (harness.wc / "b" / "sub" / "dir" / "a.txt").read_text() == (
+        "one\nTWO\nthree\n"
+    )
+
+
+def test_apply_p2_strips_the_prefix_and_one_directory(harness):
+    """Counting from the path as written: `b/` then `sub/`, leaving `dir`."""
+    harness.set_status([])
+    harness.write("dir/a.txt", "one\ntwo\nthree\n")
+
+    assert harness.run("apply", "-p", "2", write_patch(harness, nested_patch())) == 0
+    assert (harness.wc / "dir" / "a.txt").read_text() == "one\nTWO\nthree\n"
+
+
 # ----------------------------------------------------------------------
 # apply: paths out of the patch are untrusted
 # ----------------------------------------------------------------------
